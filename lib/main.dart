@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'billing/billing_page.dart';
+import 'data/mock_data.dart';
 
 void main() {
+  initializeSharedMockData();
   runApp(const DashboardApp());
 }
 
@@ -37,7 +39,6 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
   // Custom Colors provided
   final Color _appBarColor = const Color(0xFF03045E);
   final Color _sidebarColor = const Color(0xFF90E0EF);
-  final Color _sidebarActiveColor = const Color(0xFF0077B6);
 
   // Layout Colors
   final Color _pageBackgroundColor = const Color(0xFFF0F2F5); // Pleasant light grey spreading the whole page
@@ -49,6 +50,24 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
   // Chart state
   int _selectedYear = DateTime.now().year;
   late final List<int> _availableYears;
+  
+  double _lastScreenWidth = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final width = MediaQuery.of(context).size.width;
+    if (_lastScreenWidth != 0) {
+      if (_lastScreenWidth >= 1000 && width < 1000) {
+        // Auto-collapse sidebar when moving to tablet/smaller desktop
+        _isSidebarExpanded = false;
+      } else if (_lastScreenWidth < 1000 && width >= 1000) {
+        // Auto-expand sidebar when moving to wide desktop
+        _isSidebarExpanded = true;
+      }
+    }
+    _lastScreenWidth = width;
+  }
 
   @override
   void initState() {
@@ -63,7 +82,7 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
   @override
   Widget build(BuildContext context) {
     // Check if we are on a small screen to auto-collapse/use Drawer
-    final isSmallScreen = MediaQuery.of(context).size.width < 800;
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
     // Check if we are on a medium screen to stack charts vertically
     final isMediumScreen = MediaQuery.of(context).size.width < 1100;
 
@@ -110,167 +129,186 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
           const SizedBox(width: 16),
         ],
       ),
-      drawer: isSmallScreen
-          ? Drawer(
-              backgroundColor: _sidebarColor,
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  DrawerHeader(
-                    decoration: BoxDecoration(
-                      color: _appBarColor,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        CircleAvatar(
-                          radius: 30,
-                          backgroundColor: _sidebarColor,
-                          child: Icon(Icons.person, size: 30, color: _appBarColor),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'User Name',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _buildDrawerItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', 0),
-                  _buildDrawerItem(Icons.receipt_long_outlined, Icons.receipt_long, 'Billing', 1),
-                  _buildDrawerItem(Icons.settings_outlined, Icons.settings, 'Settings', 2),
-                ],
-              ),
-            )
-          : null,
-      body: Row(
+      body: Stack(
         children: [
-          // NavigationRail acts as the collapsible sidebar on larger screens
-          if (!isSmallScreen)
-            Container(
+          Row(
+            children: [
+              // Custom Animated Sidebar for Apple-styled Active States
+              if (!isSmallScreen)
+                AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              width: _isSidebarExpanded ? 240 : 88,
               color: _sidebarColor,
-              child: NavigationRail(
-                extended: _isSidebarExpanded,
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (int index) {
-                  setState(() {
-                    _selectedIndex = index;
-                  });
-                },
-                backgroundColor: _sidebarColor,
-                indicatorColor: _sidebarActiveColor,
-                selectedIconTheme: const IconThemeData(color: Colors.white, size: 28),
-                unselectedIconTheme: const IconThemeData(color: Colors.black, size: 28),
-                selectedLabelTextStyle: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-                unselectedLabelTextStyle: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 16,
-                ),
-                destinations: const [
-                  NavigationRailDestination(
-                    icon: Icon(Icons.dashboard_outlined),
-                    selectedIcon: Icon(Icons.dashboard),
-                    label: Text('Dashboard'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.receipt_long_outlined),
-                    selectedIcon: Icon(Icons.receipt_long),
-                    label: Text('Billing'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.settings_outlined),
-                    selectedIcon: Icon(Icons.settings),
-                    label: Text('Settings'),
-                  ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 24),
+                  _buildAppleStyleSidebarItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', 0),
+                  _buildAppleStyleSidebarItem(Icons.receipt_long_outlined, Icons.receipt_long, 'Billing', 1),
+                  _buildAppleStyleSidebarItem(Icons.settings_outlined, Icons.settings, 'Settings', 2),
                 ],
               ),
             ),
-          // Main Body Content
-          Expanded(
-            child: _buildMainContent(isMediumScreen),
+              // Main Body Content
+              Expanded(
+                child: _buildMainContent(isMediumScreen),
+              ),
+            ],
+          ),
+          
+          // Mobile Floating Bottom Navigation
+          if (isSmallScreen)
+            Positioned(
+              bottom: 24,
+              left: 24,
+              right: 24,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _sidebarColor,
+                    borderRadius: BorderRadius.circular(32),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildMobileNavItem(Icons.dashboard_outlined, Icons.dashboard, 0),
+                      const SizedBox(width: 16),
+                      _buildMobileNavItem(Icons.receipt_long_outlined, Icons.receipt_long, 1),
+                      const SizedBox(width: 16),
+                      _buildMobileNavItem(Icons.settings_outlined, Icons.settings, 2),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileNavItem(IconData unselectedIcon, IconData selectedIcon, int index) {
+    final isSelected = _selectedIndex == index;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedIndex = index;
+        });
+      },
+      borderRadius: BorderRadius.circular(24),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? _appBarColor : Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Icon(
+          isSelected ? selectedIcon : unselectedIcon,
+          color: isSelected ? Colors.white : Colors.black87,
+          size: 28,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppleStyleSidebarItem(IconData unselectedIcon, IconData selectedIcon, String title, int index) {
+    final isSelected = _selectedIndex == index;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            color: isSelected ? _appBarColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: EdgeInsets.symmetric(
+            vertical: 14,
+            horizontal: _isSidebarExpanded ? 16 : 0,
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: _isSidebarExpanded ? MainAxisAlignment.start : MainAxisAlignment.center,
+            children: [
+              Icon(
+                isSelected ? selectedIcon : unselectedIcon,
+                color: isSelected ? Colors.white : Colors.black87,
+                size: 26,
+              ),
+              if (_isSidebarExpanded) ...[
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black87,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ]
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Helper to build settings or empty pages
+  Widget _buildEmptyPlaceholder(int index) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            _getIconForIndex(index),
+            size: 80,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            _getTitleForIndex(index),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'This is a blank canvas for your ${_getTitleForIndex(index).toLowerCase()}.\nYou can start adding widgets here.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
           ),
         ],
       ),
     );
   }
 
-  // Helper method to build drawer items for small screens
-  Widget _buildDrawerItem(IconData unselectedIcon, IconData selectedIcon, String title, int index) {
-    final isSelected = _selectedIndex == index;
-
-    return Container(
-      color: isSelected ? _sidebarActiveColor : Colors.transparent,
-      child: ListTile(
-        leading: Icon(
-          isSelected ? selectedIcon : unselectedIcon,
-          color: isSelected ? Colors.white : Colors.black,
-          size: 28,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Colors.white : Colors.black,
-            fontSize: 16,
-          ),
-        ),
-        selected: isSelected,
-        onTap: () {
-          setState(() {
-            _selectedIndex = index;
-          });
-          Navigator.pop(context); // Close the drawer upon selection
-        },
-      ),
-    );
-  }
-
-  // Returns the content for the currently selected tab
-  Widget _buildMainContent(bool shouldStackCharts) {
-    if (_selectedIndex == 1) {
-      return const BillingPage();
-    }
-
-    if (_selectedIndex != 0) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              _getIconForIndex(_selectedIndex),
-              size: 80,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              _getTitleForIndex(_selectedIndex),
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'This is a blank canvas for your ${_getTitleForIndex(_selectedIndex).toLowerCase()}.\nYou can start adding widgets here.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
-      );
-    }
-
+  // Helper to build dashboard charts
+  Widget _buildDashboardContent(bool shouldStackCharts) {
     final chartContent = shouldStackCharts
         ? Column(
             children: [
@@ -291,6 +329,18 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
       child: chartContent,
+    );
+  }
+
+  // Returns the content for the currently selected tab using IndexedStack for state preservation
+  Widget _buildMainContent(bool shouldStackCharts) {
+    return IndexedStack(
+      index: _selectedIndex,
+      children: [
+        _buildDashboardContent(shouldStackCharts),
+        const BillingPage(),
+        _buildEmptyPlaceholder(2),
+      ],
     );
   }
 
@@ -363,16 +413,33 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
   }
 
   Widget _buildLineChart() {
-    final randomSeed = _selectedYear * 10;
+    List<double> goldTotals = List.filled(12, 0.0);
+    List<double> silverTotals = List.filled(12, 0.0);
     
+    final yearItems = sharedMockItems.where((item) => item.date.year == _selectedYear).toList();
+    for (var item in yearItems) {
+      int month = item.date.month - 1; 
+      if (item.description.toLowerCase().contains('gold')) {
+        goldTotals[month] += (item.totalValue / 1000.0); // Scale down for chart (thousands)
+      } else if (item.description.toLowerCase().contains('silver')) {
+        silverTotals[month] += (item.totalValue / 1000.0); 
+      }
+    }
+
     List<FlSpot> goldSpots = [];
     List<FlSpot> silverSpots = [];
+    double overallMaxY = 100;
+
     for (int i = 0; i < 12; i++) {
-      double g = 40 + (i * 2.5) + ((i * randomSeed) % 20).toDouble();
-      double s = 20 + (i * 1.8) + (((i+5) * randomSeed) % 15).toDouble();
-      goldSpots.add(FlSpot(i.toDouble(), g));
-      silverSpots.add(FlSpot(i.toDouble(), s));
+      if (goldTotals[i] > overallMaxY) overallMaxY = goldTotals[i];
+      if (silverTotals[i] > overallMaxY) overallMaxY = silverTotals[i];
+      goldSpots.add(FlSpot(i.toDouble(), goldTotals[i]));
+      silverSpots.add(FlSpot(i.toDouble(), silverTotals[i]));
     }
+
+    // Round up max to the nearest 100 for clean UI breathing room
+    double roundedMaxY = ((overallMaxY / 100).ceil() * 100).toDouble();
+    double dynamicInterval = (roundedMaxY / 5).clamp(20.0, double.infinity).toDouble();
 
     return LineChart(
       LineChartData(
@@ -401,7 +468,7 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
             getTooltipItems: (List<LineBarSpot> touchedSpots) {
               return touchedSpots.map((LineBarSpot touchedSpot) {
                 return LineTooltipItem(
-                  '\$${touchedSpot.y.toInt()}k',
+                  '₹${touchedSpot.y.toInt()}k',
                   TextStyle(
                     color: touchedSpot.bar.color,
                     fontWeight: FontWeight.bold,
@@ -415,7 +482,7 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          horizontalInterval: 20,
+          horizontalInterval: dynamicInterval,
           getDrawingHorizontalLine: (value) {
             return FlLine(
               color: Colors.grey.withValues(alpha: 0.15), // Very subtle grid
@@ -448,12 +515,12 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 46,
-              interval: 20,
+              interval: dynamicInterval,
               getTitlesWidget: (value, meta) {
                 return Padding(
                   padding: const EdgeInsets.only(right: 8.0),
                   child: Text(
-                    '\$${value.toInt()}k',
+                    '₹${value.toInt()}k',
                     style: const TextStyle(fontSize: 13, color: Colors.black54, fontWeight: FontWeight.bold),
                     textAlign: TextAlign.right,
                   ),
@@ -494,7 +561,7 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
         minX: 0,
         maxX: 11,
         minY: 0,
-        maxY: 100,
+        maxY: roundedMaxY,
       ),
       // Animation curves for nice transitions
       duration: const Duration(milliseconds: 600),
@@ -503,6 +570,23 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
   }
 
   Widget _buildMonthlyPieCard() {
+    double goldTotal = 0;
+    double silverTotal = 0;
+    
+    final now = DateTime.now();
+    final monthItems = sharedMockItems.where((item) => item.date.year == now.year && item.date.month == now.month);
+    for (var item in monthItems) {
+      if (item.description.toLowerCase().contains('gold')) {
+        goldTotal += item.totalValue;
+      } else if (item.description.toLowerCase().contains('silver')) {
+        silverTotal += item.totalValue;
+      }
+    }
+    
+    double total = goldTotal + silverTotal;
+    int goldPercent = total == 0 ? 50 : ((goldTotal / total) * 100).round();
+    int silverPercent = total == 0 ? 50 : 100 - goldPercent;
+
     return Card(
       elevation: 3,
       shadowColor: Colors.black12,
@@ -546,8 +630,8 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
                           sections: [
                             PieChartSectionData(
                               color: _goldColor,
-                              value: 65,
-                              title: '65%',
+                              value: goldPercent.toDouble(),
+                              title: '$goldPercent%',
                               radius: goldRadius,
                               titleStyle: TextStyle(
                                 fontSize: titleFontSize,
@@ -558,8 +642,8 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
                             ),
                             PieChartSectionData(
                               color: _silverColor,
-                              value: 35,
-                              title: '35%',
+                              value: silverPercent.toDouble(),
+                              title: '$silverPercent%',
                               radius: silverRadius,
                               titleStyle: TextStyle(
                                 fontSize: titleFontSize,

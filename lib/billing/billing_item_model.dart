@@ -1,6 +1,7 @@
 class BillItem {
   final int slNo;
   final DateTime date;
+  final String customerName;
   final String description;
   final String hsnSac;
   final int pcs;
@@ -18,6 +19,7 @@ class BillItem {
   BillItem({
     required this.slNo,
     required this.date,
+    required this.customerName,
     required this.description,
     required this.hsnSac,
     required this.pcs,
