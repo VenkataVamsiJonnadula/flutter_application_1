@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../providers/customer_provider.dart';
 import '../data/mock_data.dart';
 import 'billing_item_model.dart';
 import 'new_bill_dialog.dart';
@@ -35,6 +37,15 @@ class _BillingPageState extends State<BillingPage> {
 
   List<BillItem> _items = [];
 
+  String _getCustomerName(String id) {
+    try {
+       final provider = Provider.of<CustomerProvider>(context, listen: false);
+       return provider.getCustomerById(id)?.name ?? id;
+    } catch (_) {
+       return id;
+    }
+  }
+
   List<BillItem> get _filteredAndSortedItems {
     Iterable<BillItem> filtered = _items;
 
@@ -42,7 +53,7 @@ class _BillingPageState extends State<BillingPage> {
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       filtered = filtered.where((item) => 
-        item.customerName.toLowerCase().contains(query) || 
+        _getCustomerName(item.customerId).toLowerCase().contains(query) || 
         item.description.toLowerCase().contains(query) ||
         item.slNo.toString().contains(query) ||
         item.hsnSac.toLowerCase().contains(query) ||
@@ -120,7 +131,7 @@ class _BillingPageState extends State<BillingPage> {
         switch (_sortColumnIndex) {
           case 0: cmp = a.slNo.compareTo(b.slNo); break;
           case 1: cmp = a.date.compareTo(b.date); break;
-          case 2: cmp = a.customerName.compareTo(b.customerName); break;
+          case 2: cmp = _getCustomerName(a.customerId).compareTo(_getCustomerName(b.customerId)); break;
           case 3: cmp = a.description.compareTo(b.description); break;
           case 5: cmp = a.pcs.compareTo(b.pcs); break;
           case 6: cmp = a.grossWt.compareTo(b.grossWt); break;
@@ -194,7 +205,7 @@ class _BillingPageState extends State<BillingPage> {
       context: context,
       builder: (context) => NewBillDialog(
         nextSlNo: _items.length + 1,
-        customerName: _customerName,
+        customerId: _customerName,
       ),
     );
 
@@ -420,7 +431,12 @@ class _BillingPageState extends State<BillingPage> {
     return SingleChildScrollView(
       physics: _isHoveringTable ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.all(32.0),
+        padding: EdgeInsets.fromLTRB(
+          MediaQuery.of(context).size.width < 600 ? 16 : 32,
+          MediaQuery.of(context).size.width < 600 ? 16 : 32,
+          MediaQuery.of(context).size.width < 600 ? 16 : 32,
+          MediaQuery.of(context).size.width < 600 ? 100 : 32,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -787,7 +803,7 @@ class _BillingPageState extends State<BillingPage> {
                                     style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0077B6)),
                                   ),
                                 ),
-                                DataCell(Text(item.customerName, style: const TextStyle(fontWeight: FontWeight.w500))),
+                                DataCell(Text(_getCustomerName(item.customerId), style: const TextStyle(fontWeight: FontWeight.w500))),
                                 DataCell(Text(item.description, style: const TextStyle(fontWeight: FontWeight.w500))),
                                 DataCell(Text(item.hsnSac)),
                                 DataCell(Text(item.pcs.toString())),

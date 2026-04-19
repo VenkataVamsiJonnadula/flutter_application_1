@@ -4,8 +4,8 @@ import 'billing_item_model.dart';
 
 class NewBillDialog extends StatefulWidget {
   final int nextSlNo;
-  final String customerName;
-  const NewBillDialog({super.key, required this.nextSlNo, required this.customerName});
+  final String customerId;
+  const NewBillDialog({super.key, required this.nextSlNo, required this.customerId});
 
   @override
   State<NewBillDialog> createState() => _NewBillDialogState();
@@ -119,7 +119,7 @@ class _NewBillDialogState extends State<NewBillDialog> {
       final newItem = BillItem(
         slNo: widget.nextSlNo,
         date: DateTime.now(),
-        customerName: widget.customerName.isEmpty ? 'Walk-in Customer' : widget.customerName,
+        customerId: widget.customerId.isEmpty ? 'C9999' : widget.customerId,
         description: _descCtrl.text.trim(),
         hsnSac: _hsnCtrl.text.trim(),
         pcs: int.tryParse(_pcsCtrl.text) ?? 1,
