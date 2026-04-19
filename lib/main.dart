@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:provider/provider.dart';
 import 'billing/billing_page.dart';
+import 'customers/customers_page.dart';
+import 'providers/customer_provider.dart';
 import 'data/mock_data.dart';
 
 void main() {
   initializeSharedMockData();
-  runApp(const DashboardApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+      ],
+      child: const DashboardApp(),
+    ),
+  );
 }
 
 class DashboardApp extends StatelessWidget {
@@ -58,12 +68,16 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
     super.didChangeDependencies();
     final width = MediaQuery.of(context).size.width;
     if (_lastScreenWidth != 0) {
-      if (_lastScreenWidth >= 1000 && width < 1000) {
+      if (_lastScreenWidth >= 1100 && width < 1100) {
         // Auto-collapse sidebar when moving to tablet/smaller desktop
         _isSidebarExpanded = false;
-      } else if (_lastScreenWidth < 1000 && width >= 1000) {
+      } else if (_lastScreenWidth < 1100 && width >= 1100) {
         // Auto-expand sidebar when moving to wide desktop
         _isSidebarExpanded = true;
+      }
+    } else {
+      if (width < 1100) {
+        _isSidebarExpanded = false;
       }
     }
     _lastScreenWidth = width;
@@ -136,19 +150,20 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
               // Custom Animated Sidebar for Apple-styled Active States
               if (!isSmallScreen)
                 AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
-              width: _isSidebarExpanded ? 240 : 88,
-              color: _sidebarColor,
-              child: Column(
-                children: [
-                  const SizedBox(height: 24),
-                  _buildAppleStyleSidebarItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', 0),
-                  _buildAppleStyleSidebarItem(Icons.receipt_long_outlined, Icons.receipt_long, 'Billing', 1),
-                  _buildAppleStyleSidebarItem(Icons.settings_outlined, Icons.settings, 'Settings', 2),
-                ],
-              ),
-            ),
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOut,
+                  width: _isSidebarExpanded ? 240 : 88,
+                  color: _sidebarColor,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 24),
+                      _buildAppleStyleSidebarItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard', 0),
+                      _buildAppleStyleSidebarItem(Icons.receipt_long_outlined, Icons.receipt_long, 'Billing', 1),
+                      _buildAppleStyleSidebarItem(Icons.people_outline, Icons.people, 'Customers', 2),
+                      _buildAppleStyleSidebarItem(Icons.settings_outlined, Icons.settings, 'Settings', 3),
+                    ],
+                  ),
+                ),
               // Main Body Content
               Expanded(
                 child: _buildMainContent(isMediumScreen),
@@ -159,7 +174,7 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
           // Mobile Floating Bottom Navigation
           if (isSmallScreen)
             Positioned(
-              bottom: 24,
+              bottom: 12,
               left: 24,
               right: 24,
               child: Center(
@@ -176,15 +191,18 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
                       ),
                     ],
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildMobileNavItem(Icons.dashboard_outlined, Icons.dashboard, 0),
-                      const SizedBox(width: 16),
-                      _buildMobileNavItem(Icons.receipt_long_outlined, Icons.receipt_long, 1),
-                      const SizedBox(width: 16),
-                      _buildMobileNavItem(Icons.settings_outlined, Icons.settings, 2),
-                    ],
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.max,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildMobileNavItem(Icons.dashboard_outlined, Icons.dashboard, 0),
+                        _buildMobileNavItem(Icons.receipt_long_outlined, Icons.receipt_long, 1),
+                        _buildMobileNavItem(Icons.people_outline, Icons.people, 2),
+                        _buildMobileNavItem(Icons.settings_outlined, Icons.settings, 3),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -222,56 +240,19 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
   }
 
   Widget _buildAppleStyleSidebarItem(IconData unselectedIcon, IconData selectedIcon, String title, int index) {
-    final isSelected = _selectedIndex == index;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeInOut,
-          decoration: BoxDecoration(
-            color: isSelected ? _appBarColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: EdgeInsets.symmetric(
-            vertical: 14,
-            horizontal: _isSidebarExpanded ? 16 : 0,
-          ),
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: _isSidebarExpanded ? MainAxisAlignment.start : MainAxisAlignment.center,
-            children: [
-              Icon(
-                isSelected ? selectedIcon : unselectedIcon,
-                color: isSelected ? Colors.white : Colors.black87,
-                size: 26,
-              ),
-              if (_isSidebarExpanded) ...[
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black87,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              ]
-            ],
-          ),
-        ),
-      ),
+    return SidebarItemWidget(
+      unselectedIcon: unselectedIcon,
+      selectedIcon: selectedIcon,
+      title: title,
+      index: index,
+      selectedIndex: _selectedIndex,
+      isSidebarExpanded: _isSidebarExpanded,
+      appBarColor: _appBarColor,
+      onTap: () {
+        setState(() {
+          _selectedIndex = index;
+        });
+      },
     );
   }
 
@@ -309,26 +290,33 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
 
   // Helper to build dashboard charts
   Widget _buildDashboardContent(bool shouldStackCharts) {
-    final chartContent = shouldStackCharts
-        ? Column(
-            children: [
-              _buildYearlySalesCard(),
-              const SizedBox(height: 24),
-              _buildMonthlyPieCard(),
-            ],
-          )
-        : Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 2, child: _buildYearlySalesCard()),
-              const SizedBox(width: 24),
-              Expanded(flex: 1, child: _buildMonthlyPieCard()),
-            ],
-          );
+    final isMobile = MediaQuery.of(context).size.width < 600;
 
+    if (isMobile) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildYearlySalesCard(),
+            const SizedBox(height: 24),
+            _buildMonthlyPieCard(),
+          ],
+        ),
+      );
+    }
+    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
-      child: chartContent,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 3, child: _buildYearlySalesCard()),
+            const SizedBox(width: 24),
+            Expanded(flex: 2, child: _buildMonthlyPieCard()),
+          ],
+        ),
+      ),
     );
   }
 
@@ -339,7 +327,8 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
       children: [
         _buildDashboardContent(shouldStackCharts),
         const BillingPage(),
-        _buildEmptyPlaceholder(2),
+        const CustomersPage(),
+        _buildEmptyPlaceholder(3),
       ],
     );
   }
@@ -719,6 +708,8 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
       case 1:
         return Icons.receipt_long;
       case 2:
+        return Icons.people;
+      case 3:
         return Icons.settings;
       default:
         return Icons.dashboard;
@@ -732,9 +723,102 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
       case 1:
         return 'Sales Billing';
       case 2:
+        return 'Customers Management';
+      case 3:
         return 'Settings Configuration';
       default:
         return 'Empty Page';
     }
   }
 }
+
+class SidebarItemWidget extends StatefulWidget {
+  final IconData unselectedIcon;
+  final IconData selectedIcon;
+  final String title;
+  final int index;
+  final int selectedIndex;
+  final bool isSidebarExpanded;
+  final Color appBarColor;
+  final VoidCallback onTap;
+
+  const SidebarItemWidget({
+    super.key,
+    required this.unselectedIcon,
+    required this.selectedIcon,
+    required this.title,
+    required this.index,
+    required this.selectedIndex,
+    required this.isSidebarExpanded,
+    required this.appBarColor,
+    required this.onTap,
+  });
+
+  @override
+  State<SidebarItemWidget> createState() => _SidebarItemWidgetState();
+}
+
+class _SidebarItemWidgetState extends State<SidebarItemWidget> {
+  bool isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = widget.selectedIndex == widget.index;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => isHovered = true),
+        onExit: (_) => setState(() => isHovered = false),
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              color: isSelected 
+                  ? widget.appBarColor 
+                  : (isHovered ? Colors.black.withValues(alpha: 0.05) : Colors.transparent),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            transform: Matrix4.translationValues(0, (isHovered && !isSelected) ? -1.0 : 0.0, 0),
+            padding: EdgeInsets.symmetric(
+              vertical: 12,
+              horizontal: widget.isSidebarExpanded ? 16 : 0,
+            ),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisAlignment: widget.isSidebarExpanded ? MainAxisAlignment.start : MainAxisAlignment.center,
+              children: [
+                Icon(
+                  (isSelected || isHovered) ? widget.selectedIcon : widget.unselectedIcon,
+                  color: isSelected 
+                      ? Colors.white 
+                      : (isHovered ? widget.appBarColor : Colors.black87),
+                  size: 24,
+                ),
+                if (widget.isSidebarExpanded) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : Colors.black87,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14,
+                        letterSpacing: -0.14,
+                      ),
+                    ),
+                  ),
+                ]
+              ],
+            ),
+          ), 
+        ), 
+      ), // Closes MouseRegion
+    ); // Closes Padding
+  }
+}
