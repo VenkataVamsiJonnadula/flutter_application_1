@@ -125,14 +125,10 @@ class _NewBillDialogState extends State<NewBillDialog> {
         pcs: int.tryParse(_pcsCtrl.text) ?? 1,
         grossWt: double.tryParse(_grossWtCtrl.text) ?? 0.0,
         stoneWt: double.tryParse(_stoneWtCtrl.text) ?? 0.0,
-        netWt: double.tryParse(_netWtCtrl.text) ?? 0.0,
         metalRate: double.tryParse(_metalRateCtrl.text) ?? 0.0,
-        metalValue: double.tryParse(_metalValueCtrl.text) ?? 0.0,
         va: double.tryParse(_vaCtrl.text) ?? 0.0,
         stoneValue: double.tryParse(_stoneValueCtrl.text) ?? 0.0,
-        totalValue: double.tryParse(_totalValueCtrl.text) ?? 0.0,
-        discAmt: double.tryParse(_discAmtCtrl.text) ?? 0.0,
-        taxableValue: double.tryParse(_taxableValueCtrl.text) ?? 0.0,
+        discAmt: double.tryParse(_discAmtCtrl.text) ?? 0.0
       );
       Navigator.of(context).pop(newItem);
     }
@@ -183,8 +179,8 @@ class _NewBillDialogState extends State<NewBillDialog> {
           }
         }
         return null;
-      },
-    );
+      }
+      );
   }
 
   @override
@@ -208,8 +204,8 @@ class _NewBillDialogState extends State<NewBillDialog> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               decoration: const BoxDecoration(
                 color: Color(0xFF03045E),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20))
+      ),
               child: Row(
                 children: [
                   const Icon(Icons.receipt_long, color: Colors.white, size: 28),
@@ -218,16 +214,16 @@ class _NewBillDialogState extends State<NewBillDialog> {
                     child: Text(
                       'New Sales Bill Item',
                       style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                      maxLines: 2,
-                    ),
-                  ),
+                      maxLines: 2
+      )
+      ),
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
-                  )
-                ],
-              ),
-            ),
+                    onPressed: () => Navigator.of(context).pop()
+      )
+                ]
+      )
+      ),
             Expanded(
               child: Form(
                 key: _formKey,
@@ -243,8 +239,8 @@ class _NewBillDialogState extends State<NewBillDialog> {
                           Expanded(child: _buildTextField('HSN/SAC', _hsnCtrl, isNumber: true)),
                           const SizedBox(width: 16),
                           Expanded(child: _buildTextField('PCS', _pcsCtrl, isNumber: true, isInt: true)),
-                        ],
-                      ),
+                        ]
+      ),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -279,11 +275,11 @@ class _NewBillDialogState extends State<NewBillDialog> {
                           Expanded(child: _buildTextField('Taxable Value', _taxableValueCtrl, isNumber: true, isDecimal: true, readOnly: true)),
                         ]
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+                    ]
+      )
+      )
+      )
+      ),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -298,10 +294,10 @@ class _NewBillDialogState extends State<NewBillDialog> {
                       foregroundColor: Colors.red.shade700,
                       side: BorderSide(color: Colors.red.shade700, width: 2),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+      ),
+                    child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))
+      ),
                   ElevatedButton.icon(
                     onPressed: _isFormValid ? _submit : null,
                     icon: const Icon(Icons.check),
@@ -313,16 +309,16 @@ class _NewBillDialogState extends State<NewBillDialog> {
                       disabledForegroundColor: Colors.white70,
                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 2,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          ],
-        ),
+                      elevation: 2
+      )
       ),
-    );
+                ]
+      )
+      )
+          ]
+      )
+      )
+      );
   }
 }
 
@@ -391,20 +387,20 @@ class _DirtyTextFieldState extends State<_DirtyTextField> {
         readOnly: widget.readOnly,
         style: TextStyle(
           fontWeight: FontWeight.w500,
-          color: widget.readOnly ? Colors.black54 : Colors.black87,
-        ),
+          color: widget.readOnly ? Colors.black54 : Colors.black87
+      ),
         decoration: InputDecoration(
           labelText: widget.label,
           labelStyle: const TextStyle(color: Colors.black54),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           focusedBorder: OutlineInputBorder(
             borderSide: BorderSide(color: widget.readOnly ? Colors.grey : const Color(0xFF03045E), width: 2),
-            borderRadius: BorderRadius.circular(8),
-          ),
+            borderRadius: BorderRadius.circular(8)
+      ),
           filled: true,
           fillColor: widget.readOnly ? Colors.grey.shade200 : Colors.grey.shade50,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)
+      ),
         keyboardType: widget.isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
         inputFormatters: [
           if (widget.isInt || widget.label == 'HSN/SAC') FilteringTextInputFormatter.digitsOnly,
@@ -417,8 +413,8 @@ class _DirtyTextFieldState extends State<_DirtyTextField> {
           widget.onChanged();
         },
         autovalidateMode: _isDirty ? AutovalidateMode.always : AutovalidateMode.disabled,
-        validator: widget.validator,
-      ),
-    );
+        validator: widget.validator
+      )
+      );
   }
 }
