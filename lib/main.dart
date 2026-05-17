@@ -8,14 +8,7 @@ import 'data/mock_data.dart';
 
 void main() {
   initializeSharedMockData();
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => CustomerProvider()),
-      ],
-      child: const DashboardApp(),
-    ),
-  );
+  runApp(const DashboardApp());
 }
 
 class DashboardApp extends StatelessWidget {
@@ -23,13 +16,18 @@ class DashboardApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Jewellery Dashboard',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF03045E)),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Jewellery Dashboard',
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF03045E)),
+        ),
+        home: const DashboardLandingPage(),
       ),
-      home: const DashboardLandingPage(),
     );
   }
 }
