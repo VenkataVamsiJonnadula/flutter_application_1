@@ -37,6 +37,9 @@ dependencies:
   fl_chart: ^1.2.0
   intl: ^0.20.2
   provider: ^6.1.5+1
+  flutter_svg: ^2.3.0
+  pdf: ^3.12.0
+  printing: ^5.14.3
 
 dev_dependencies:
   flutter_test:
@@ -61,9 +64,11 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/brand_logo_colored.svg
+    - assets/Rubik-VariableFont_wght.ttf
+    - assets/Rubik-Italic-VariableFont_wght.ttf
+    - web/pdfjs/pdf.min.js
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

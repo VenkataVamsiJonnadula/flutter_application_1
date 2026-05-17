@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/customer_provider.dart';
+import '../customers/customer_model.dart';
 import '../data/mock_data.dart';
 import 'billing_item_model.dart';
 import 'new_bill_dialog.dart';
+import 'view_sales_bill_page.dart';
 
 class BillingPage extends StatefulWidget {
   const BillingPage({super.key});
@@ -27,8 +28,8 @@ class _BillingPageState extends State<BillingPage> {
   // Filter & Sort State
   String _searchQuery = "";
   final List<String> _activeQuickFilters = []; // Multi-select filters
-  int _sortColumnIndex = 1; // Default sort by Date (index 1)
-  bool _sortAscending = false;
+  final int _sortColumnIndex = 1; // Default sort by Date (index 1)
+  final bool _sortAscending = false;
 
   DateTime? _customFromDate;
   DateTime? _customToDate;
@@ -146,9 +147,6 @@ class _BillingPageState extends State<BillingPage> {
     return resultList;
   }
 
-  final _horizontalScrollController = ScrollController();
-  bool _isHoveringTable = false;
-
   @override
   void initState() {
     super.initState();
@@ -179,14 +177,6 @@ class _BillingPageState extends State<BillingPage> {
         });
       }
     });
-  }
-
-  void _sort(int columnIndex, bool ascending) {
-    setState(() {
-      _sortColumnIndex = columnIndex;
-      _sortAscending = ascending;
-    });
-    _updatePagination(newPage: 0);
   }
 
   void _loadData() {
@@ -429,7 +419,7 @@ class _BillingPageState extends State<BillingPage> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      physics: _isHoveringTable ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
+      physics: const ClampingScrollPhysics(),
       child: Padding(
         padding: EdgeInsets.fromLTRB(
           MediaQuery.of(context).size.width < 600 ? 16 : 32,
@@ -700,192 +690,114 @@ class _BillingPageState extends State<BillingPage> {
                 ),
               )
             else
-              MouseRegion(
-                onEnter: (_) => setState(() => _isHoveringTable = true),
-                onExit: (_) => setState(() => _isHoveringTable = false),
-                child: Listener(
-                onPointerSignal: (PointerSignalEvent event) {
-                  if (event is PointerScrollEvent && _isHoveringTable) {
-                    final double scrollDelta = event.scrollDelta.dy != 0 ? event.scrollDelta.dy : event.scrollDelta.dx;
-                    if (_horizontalScrollController.hasClients) {
-                      final newOffset = _horizontalScrollController.offset + scrollDelta;
-                      _horizontalScrollController.position.jumpTo(
-                        newOffset.clamp(
-                          _horizontalScrollController.position.minScrollExtent,
-                          _horizontalScrollController.position.maxScrollExtent,
-                        ),
-                      );
-                    }
-                  }
-                },
-                child: Card(
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              Container(
+                decoration: BoxDecoration(
                   color: Colors.white,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Scrollbar(
-                      controller: _horizontalScrollController,
-                      thumbVisibility: true,
-                      child: SingleChildScrollView(
-                        controller: _horizontalScrollController,
-                        scrollDirection: Axis.horizontal,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          switchInCurve: Curves.easeInOut,
-                          switchOutCurve: Curves.easeInOut,
-                          child: _isChangingPage 
-                            ? const SizedBox(
-                                height: 300,
-                                width: 800, // Fixed width placeholder
-                                child: Center(
-                                  child: CircularProgressIndicator(color: Color(0xFF0077B6)),
-                                ),
-                              )
-                            : _filteredAndSortedItems.isEmpty
-                                ? SizedBox(
-                                    height: 300,
-                                    width: MediaQuery.of(context).size.width * 0.8,
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(Icons.search_off_rounded, size: 64, color: Colors.grey.shade400),
-                                          const SizedBox(height: 16),
-                                          const Text(
-                                            'No Records Found',
-                                            style: TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF03045E),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Try adjusting your search or filters to find what you are looking for.',
-                                            style: TextStyle(color: Colors.grey.shade600),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                : DataTable(
-                                    key: ValueKey('page_${_currentPage}_$_rowsPerPage'),
-                                    headingRowColor: WidgetStateProperty.resolveWith((states) => const Color(0xFF90E0EF).withValues(alpha: 0.3)),
-                                    showBottomBorder: true,
-                                sortColumnIndex: _sortColumnIndex,
-                                sortAscending: _sortAscending,
-                                columns: [
-                                  DataColumn(label: const Text('SlNo.', style: TextStyle(fontWeight: FontWeight.bold)), onSort: _sort),
-                                  DataColumn(label: const Text('Bill Date', style: TextStyle(fontWeight: FontWeight.bold)), onSort: _sort),
-                                  DataColumn(label: const Text('Customer Name', style: TextStyle(fontWeight: FontWeight.bold)), onSort: _sort),
-                                  DataColumn(label: const Text('Description of Goods', style: TextStyle(fontWeight: FontWeight.bold)), onSort: _sort),
-                                  DataColumn(label: const Text('HSN/SAC', style: TextStyle(fontWeight: FontWeight.bold))),
-                                  DataColumn(label: const NumericText('PCS'), onSort: _sort),
-                                  DataColumn(label: const NumericText('Gross Wt.'), onSort: _sort),
-                                  DataColumn(label: const NumericText('Stone Wt.')),
-                                  DataColumn(label: const NumericText('Net Wt.'), onSort: _sort),
-                                  DataColumn(label: const NumericText('Metal Rate')),
-                                  DataColumn(label: const NumericText('Metal Value')),
-                                  DataColumn(label: const NumericText('VA.')),
-                                  DataColumn(label: const NumericText('Stone Value')),
-                                  DataColumn(label: const NumericText('Total Value'), onSort: _sort),
-                                  DataColumn(label: const NumericText('Disc Amt.')),
-                                  DataColumn(label: const NumericText('Taxable Value')),
-                                ],
-                          rows: _filteredAndSortedItems.skip(_currentPage * _rowsPerPage).take(_rowsPerPage).map((item) {
-                            return DataRow(
-                              cells: [
-                                DataCell(Text(item.slNo.toString())),
-                                DataCell(
-                                  Text(
-                                    DateFormat('dd/MM/yyyy hh:mm a').format(item.date),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0077B6)),
-                                  ),
-                                ),
-                                DataCell(Text(_getCustomerName(item.customerId), style: const TextStyle(fontWeight: FontWeight.w500))),
-                                DataCell(Text(item.description, style: const TextStyle(fontWeight: FontWeight.w500))),
-                                DataCell(Text(item.hsnSac)),
-                                DataCell(Text(item.pcs.toString())),
-                                DataCell(Text(item.grossWt.toStringAsFixed(3))),
-                                DataCell(Text(item.stoneWt.toStringAsFixed(3))),
-                                DataCell(Text(item.netWt.toStringAsFixed(3))),
-                                DataCell(Text(item.metalRate.toStringAsFixed(2))),
-                                DataCell(Text(item.metalValue.toStringAsFixed(2))),
-                                DataCell(Text(item.va.toStringAsFixed(2))),
-                                DataCell(Text(item.stoneValue.toStringAsFixed(2))),
-                                DataCell(Text(item.totalValue.toStringAsFixed(2))),
-                                DataCell(Text(item.discAmt.toStringAsFixed(2))),
-                                DataCell(Text(item.taxableValue.toStringAsFixed(2))),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                  ]
                 ),
-              ),
-            ),
-            if (!_isLoading) ...[
-              const SizedBox(height: 16),
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  Text(
-                    'Showing ${_filteredAndSortedItems.isEmpty ? 0 : (_currentPage * _rowsPerPage) + 1} - ${((_currentPage + 1) * _rowsPerPage) > _filteredAndSortedItems.length ? _filteredAndSortedItems.length : ((_currentPage + 1) * _rowsPerPage)} of ${_filteredAndSortedItems.length} records',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF03045E)),
-                  ),
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      const Text('Rows per page: ', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF03045E))),
-                      const SizedBox(width: 8),
-                      DropdownButton<int>(
-                        value: _rowsPerPage,
-                        focusColor: Colors.transparent,
-                        underline: const SizedBox(),
-                        items: [10, 20, 50].map((int value) {
-                          return DropdownMenuItem<int>(
-                            value: value,
-                            child: Text(value.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
-                          );
-                        }).toList(),
-                        onChanged: (int? newValue) {
-                          if (newValue != null) {
-                            FocusScope.of(context).unfocus();
-                            _updatePagination(newRowsPerPage: newValue);
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 24),
-                      IconButton(
-                        icon: const Icon(Icons.chevron_left),
-                        color: const Color(0xFF03045E),
-                        onPressed: _currentPage > 0 && !_isChangingPage
-                            ? () => _updatePagination(newPage: _currentPage - 1)
-                            : null,
-                      ),
-                      Text(
-                        'Page ${_currentPage + 1} of ${(_filteredAndSortedItems.isEmpty ? 1 : (_filteredAndSortedItems.length / _rowsPerPage).ceil())}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF03045E)),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.chevron_right),
-                        color: const Color(0xFF03045E),
-                        onPressed: (_currentPage + 1) * _rowsPerPage < _filteredAndSortedItems.length && !_isChangingPage
-                            ? () => _updatePagination(newPage: _currentPage + 1)
-                            : null,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_filteredAndSortedItems.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 48),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off_rounded, size: 80, color: Colors.grey.shade300),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No matching records found',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Try adjusting your search or filters to find what you are looking for.',
+                                style: TextStyle(color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else ...[
+                      if (MediaQuery.of(context).size.width < 600)
+                        _buildMobileCards(_filteredAndSortedItems)
+                      else
+                        _buildModernTable(_filteredAndSortedItems),
+                      
+                      // Pagination Controls
+                      const Divider(height: 1, thickness: 1),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              'Showing ${_filteredAndSortedItems.isEmpty ? 0 : (_currentPage * _rowsPerPage) + 1} to ${((_currentPage + 1) * _rowsPerPage) > _filteredAndSortedItems.length ? _filteredAndSortedItems.length : ((_currentPage + 1) * _rowsPerPage)} of ${_filteredAndSortedItems.length}',
+                              style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('Rows per page: ', style: TextStyle(fontWeight: FontWeight.w500, color: Colors.black87)),
+                                const SizedBox(width: 8),
+                                DropdownButton<int>(
+                                  value: _rowsPerPage,
+                                  focusColor: Colors.transparent,
+                                  underline: const SizedBox(),
+                                  icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF0077B6)),
+                                  items: [10, 20, 50].map((int value) {
+                                    return DropdownMenuItem<int>(
+                                      value: value,
+                                      child: Text(value.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    );
+                                  }).toList(),
+                                  onChanged: (int? newValue) {
+                                    if (newValue != null) {
+                                      FocusScope.of(context).unfocus();
+                                      _updatePagination(newRowsPerPage: newValue);
+                                    }
+                                  },
+                                ),
+                                const SizedBox(width: 24),
+                                IconButton(
+                                  icon: const Icon(Icons.chevron_left),
+                                  onPressed: _currentPage > 0 && !_isChangingPage
+                                      ? () => _updatePagination(newPage: _currentPage - 1)
+                                      : null,
+                                  color: const Color(0xFF0077B6),
+                                  disabledColor: Colors.grey.shade300,
+                                ),
+                                if (MediaQuery.of(context).size.width >= 600) ...[
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Page ${_currentPage + 1} of ${(_filteredAndSortedItems.isEmpty ? 1 : (_filteredAndSortedItems.length / _rowsPerPage).ceil())}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                IconButton(
+                                  icon: const Icon(Icons.chevron_right),
+                                  onPressed: (_currentPage + 1) * _rowsPerPage < _filteredAndSortedItems.length && !_isChangingPage
+                                      ? () => _updatePagination(newPage: _currentPage + 1)
+                                      : null,
+                                  color: const Color(0xFF0077B6),
+                                  disabledColor: Colors.grey.shade300,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ],
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ],
             const SizedBox(height: 24),
             Wrap(
               alignment: WrapAlignment.end,
@@ -921,14 +833,233 @@ class _BillingPageState extends State<BillingPage> {
       ),
     );
   }
+
+  Widget _buildModernTable(List<BillItem> items) {
+    final paginatedItems = items.skip(_currentPage * _rowsPerPage).take(_rowsPerPage).toList();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          decoration: BoxDecoration(color: Colors.grey.shade50),
+          child: Row(
+            children: [
+              Expanded(flex: 2, child: Text('Customer Profile', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+              Expanded(child: Text('Sl No.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+              Expanded(child: Text('Bill Date', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+              Expanded(flex: 2, child: Text('Description of Goods', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+              Expanded(child: Text('Total Value', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+              const SizedBox(width: 40),
+            ],
+          ),
+        ),
+        const Divider(height: 1, thickness: 1),
+        if (_isChangingPage)
+          const SizedBox(
+            height: 300,
+            child: Center(child: CircularProgressIndicator(color: Color(0xFF0077B6))),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: paginatedItems.length,
+            separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1),
+            itemBuilder: (context, index) {
+              final item = paginatedItems[index];
+              final customerName = _getCustomerName(item.customerId);
+              return _HoverTableRow(
+                item: item,
+                customerName: customerName,
+                onTap: () {
+                  final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
+                  final fullCustomer = customerProvider.getCustomerById(item.customerId) ?? 
+                      Customer(id: item.customerId, name: customerName, phone: 'N/A', address: 'N/A', email: '', customerSince: DateTime.now());
+                  
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ViewSalesBillPage(billItem: item, customer: fullCustomer),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMobileCards(List<BillItem> items) {
+    final paginatedItems = items.skip(_currentPage * _rowsPerPage).take(_rowsPerPage).toList();
+
+    if (_isChangingPage) {
+      return const SizedBox(
+        height: 300,
+        child: Center(child: CircularProgressIndicator(color: Color(0xFF0077B6))),
+      );
+    }
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: paginatedItems.length,
+      separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1),
+      itemBuilder: (context, index) {
+        final item = paginatedItems[index];
+        final customerName = _getCustomerName(item.customerId);
+        return InkWell(
+          onTap: () {
+            final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
+            final fullCustomer = customerProvider.getCustomerById(item.customerId) ?? 
+                Customer(id: item.customerId, name: customerName, phone: 'N/A', address: 'N/A', email: '', customerSince: DateTime.now());
+            
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ViewSalesBillPage(billItem: item, customer: fullCustomer),
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  backgroundColor: const Color(0xFFCAF0F8),
+                  radius: 24,
+                  child: Text(
+                    customerName.isNotEmpty ? customerName.substring(0, 1).toUpperCase() : '?',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF03045E)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        customerName,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF03045E)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              DateFormat('dd/MM/yyyy').format(item.date),
+                              style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '₹${item.totalValue.toStringAsFixed(2)}',
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0077B6), fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF03045E).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF03045E).withValues(alpha: 0.2)),
+                  ),
+                  child: Text(
+                    'Sl: ${item.slNo}',
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF03045E), fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-class NumericText extends StatelessWidget {
-  final String text;
-  const NumericText(this.text, {super.key});
+class _HoverTableRow extends StatefulWidget {
+  final BillItem item;
+  final String customerName;
+  final VoidCallback onTap;
+
+  const _HoverTableRow({required this.item, required this.customerName, required this.onTap});
+
+  @override
+  State<_HoverTableRow> createState() => _HoverTableRowState();
+}
+
+class _HoverTableRowState extends State<_HoverTableRow> {
+  bool _isHovering = false;
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(fontWeight: FontWeight.bold));
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovering = true),
+      onExit: (_) => setState(() => _isHovering = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          color: _isHovering ? Colors.blue.shade50 : Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: const Color(0xFFCAF0F8),
+                      radius: 16,
+                      child: Text(
+                        widget.customerName.isNotEmpty ? widget.customerName.substring(0, 1).toUpperCase() : '?',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF03045E)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        widget.customerName, 
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF03045E)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Text(widget.item.slNo.toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0077B6))),
+              ),
+              Expanded(
+                child: Text(DateFormat('dd/MM/yyyy').format(widget.item.date), style: const TextStyle(color: Colors.black87)),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(widget.item.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)),
+              ),
+              Expanded(
+                child: Text('₹${widget.item.totalValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0077B6))),
+              ),
+              Icon(Icons.chevron_right, color: _isHovering ? const Color(0xFF0077B6) : Colors.grey.shade300),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
