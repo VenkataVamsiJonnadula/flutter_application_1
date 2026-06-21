@@ -39,6 +39,7 @@ dependencies:
   provider: ^6.1.5+1
   pdf: ^3.12.0
   printing: ^5.14.3
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -68,6 +69,18 @@ flutter:
     - assets/Rubik-VariableFont_wght.ttf
     - assets/Rubik-Italic-VariableFont_wght.ttf
     - web/pdfjs/pdf.min.js
+
+  fonts:
+    - family: Rubik
+      fonts:
+        - asset: assets/Rubik-VariableFont_wght.ttf
+        - asset: assets/Rubik-Italic-VariableFont_wght.ttf
+          style: italic
+    - family: Roboto
+      fonts:
+        - asset: assets/Rubik-VariableFont_wght.ttf
+        - asset: assets/Rubik-Italic-VariableFont_wght.ttf
+          style: italic
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

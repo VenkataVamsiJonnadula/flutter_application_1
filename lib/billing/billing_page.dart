@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/customer_provider.dart';
 import '../customers/customer_model.dart';
 import '../data/mock_data.dart';
-import 'billing_item_model.dart';
-import 'new_bill_dialog.dart';
+import 'bill_model.dart';
+import 'create_new_bill_page.dart';
 import 'view_sales_bill_page.dart';
 
 class BillingPage extends StatefulWidget {
@@ -21,22 +21,21 @@ class _BillingPageState extends State<BillingPage> {
   int _currentPage = 0;
   int _rowsPerPage = 10;
 
-  DateTime _billDate = DateTime.now();
   // ignore: unused_field
   String _customerName = "";
   
   // Filter & Sort State
   String _searchQuery = "";
   final List<String> _activeQuickFilters = []; // Multi-select filters
-  final int _sortColumnIndex = 1; // Default sort by Date (index 1)
-  final bool _sortAscending = false;
+  int _sortColumnIndex = 1; // Default sort by Date (index 1)
+  bool _sortAscending = false;
 
   DateTime? _customFromDate;
   DateTime? _customToDate;
   RangeValues _totalValueRange = const RangeValues(0, 2000000); // Default to a wide range up to 20 Lakhs
   bool _isValueFilterActive = false;
 
-  List<BillItem> _items = [];
+  List<Bill> _items = [];
 
   String _getCustomerName(String id) {
     try {
@@ -47,8 +46,8 @@ class _BillingPageState extends State<BillingPage> {
     }
   }
 
-  List<BillItem> get _filteredAndSortedItems {
-    Iterable<BillItem> filtered = _items;
+  List<Bill> get _filteredAndSortedItems {
+    Iterable<Bill> filtered = _items;
 
     // 1. Search Filter
     if (_searchQuery.isNotEmpty) {
@@ -57,10 +56,10 @@ class _BillingPageState extends State<BillingPage> {
         _getCustomerName(item.customerId).toLowerCase().contains(query) || 
         item.description.toLowerCase().contains(query) ||
         item.slNo.toString().contains(query) ||
-        item.hsnSac.toLowerCase().contains(query) ||
+        item.items.any((li) => li.hsnSac.toLowerCase().contains(query)) ||
         item.grossWt.toString().contains(query) ||
         item.netWt.toString().contains(query) ||
-        item.totalValue.toString().contains(query)
+        item.grandTotal.toString().contains(query)
       );
     }
 
@@ -119,8 +118,8 @@ class _BillingPageState extends State<BillingPage> {
     // Apply Total Value Range Filter
     if (_isValueFilterActive) {
       filtered = filtered.where((item) => 
-        item.totalValue >= _totalValueRange.start && 
-        item.totalValue <= _totalValueRange.end
+        item.grandTotal >= _totalValueRange.start && 
+        item.grandTotal <= _totalValueRange.end
       );
     }
 
@@ -137,7 +136,7 @@ class _BillingPageState extends State<BillingPage> {
           case 5: cmp = a.pcs.compareTo(b.pcs); break;
           case 6: cmp = a.grossWt.compareTo(b.grossWt); break;
           case 8: cmp = a.netWt.compareTo(b.netWt); break;
-          case 13: cmp = a.totalValue.compareTo(b.totalValue); break;
+          case 13: cmp = a.grandTotal.compareTo(b.grandTotal); break;
           default: cmp = a.date.compareTo(b.date); break;
         }
         return _sortAscending ? cmp : -cmp;
@@ -191,26 +190,25 @@ class _BillingPageState extends State<BillingPage> {
 
 
   void _openNewBillDialog() async {
-    final BillItem? newItem = await showDialog<BillItem>(
-      context: context,
-      builder: (context) => NewBillDialog(
-        nextSlNo: _items.length + 1,
-        customerId: _customerName,
+    final bool? billCreated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CreateNewBillPage(
+          nextSlNo: _items.length + 1,
+        ),
       ),
     );
 
-    if (newItem != null) {
+    if (billCreated == true) {
       setState(() {
-        _items.add(newItem);
-        // Ensure strictly sorted order dynamically applied after user submission
-        _items.sort((a, b) => b.date.compareTo(a.date));
+        _items = sharedMockItems;
       });
       _updatePagination(newPage: 0); // Refresh view
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Bill item tracked successfully!', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Text('Bill created successfully!', style: TextStyle(fontWeight: FontWeight.bold)),
           backgroundColor: Color(0xFF0077B6),
         ),
       );
@@ -398,22 +396,48 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _billDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2101),
-    );
-    if (picked != null && picked != _billDate) {
-      setState(() {
-        _billDate = picked;
-      });
-    }
-  }
-
   String _formatSimpleDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Widget _buildSortableHeader({
+    required String label,
+    required int columnIndex,
+    int flex = 1,
+  }) {
+    final bool isSorted = _sortColumnIndex == columnIndex;
+    return Expanded(
+      flex: flex,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            if (_sortColumnIndex == columnIndex) {
+              _sortAscending = !_sortAscending;
+            } else {
+              _sortColumnIndex = columnIndex;
+              _sortAscending = true;
+            }
+          });
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+            ),
+            if (isSorted) ...[
+              const SizedBox(width: 4),
+              Icon(
+                _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 14,
+                color: const Color(0xFF0077B6),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -430,38 +454,14 @@ class _BillingPageState extends State<BillingPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header Section: Bill Date and Title
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: 16,
-              children: [
-                const Text(
-                  'Manage Sales & Bills',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF03045E),
-                  ),
-                ),
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                     const Text(
-                      'Bill Config Date: ',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    TextButton.icon(
-                      onPressed: () => _selectDate(context),
-                      icon: const Icon(Icons.calendar_today, size: 18),
-                      label: Text(
-                        _formatSimpleDate(_billDate),
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            // Header Section: Title
+            const Text(
+              'Manage Sales & Bills',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF03045E),
+              ),
             ),
             const SizedBox(height: 24),
             
@@ -834,7 +834,7 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
-  Widget _buildModernTable(List<BillItem> items) {
+  Widget _buildModernTable(List<Bill> items) {
     final paginatedItems = items.skip(_currentPage * _rowsPerPage).take(_rowsPerPage).toList();
     
     return Column(
@@ -845,11 +845,11 @@ class _BillingPageState extends State<BillingPage> {
           decoration: BoxDecoration(color: Colors.grey.shade50),
           child: Row(
             children: [
-              Expanded(flex: 2, child: Text('Customer Profile', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
-              Expanded(child: Text('Sl No.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
-              Expanded(child: Text('Bill Date', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
-              Expanded(flex: 2, child: Text('Description of Goods', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
-              Expanded(child: Text('Total Value', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+              _buildSortableHeader(label: 'Customer Profile', columnIndex: 2, flex: 2),
+              _buildSortableHeader(label: 'Sl No.', columnIndex: 0),
+              _buildSortableHeader(label: 'Bill Date', columnIndex: 1),
+              _buildSortableHeader(label: 'Description of Goods', columnIndex: 3, flex: 2),
+              _buildSortableHeader(label: 'Total Value', columnIndex: 13),
               const SizedBox(width: 40),
             ],
           ),
@@ -868,19 +868,26 @@ class _BillingPageState extends State<BillingPage> {
             separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1),
             itemBuilder: (context, index) {
               final item = paginatedItems[index];
-              final customerName = _getCustomerName(item.customerId);
+              final customerName = item.customerName;
               return _HoverTableRow(
                 item: item,
                 customerName: customerName,
                 onTap: () {
                   final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
                   final fullCustomer = customerProvider.getCustomerById(item.customerId) ?? 
-                      Customer(id: item.customerId, name: customerName, phone: 'N/A', address: 'N/A', email: '', customerSince: DateTime.now());
+                      Customer(
+                        id: item.customerId, 
+                        name: item.customerName, 
+                        phone: item.customerPhone.isNotEmpty ? item.customerPhone : 'NA', 
+                        address: item.customerAddress.isNotEmpty ? item.customerAddress : 'NA', 
+                        email: '', 
+                        customerSince: item.date,
+                      );
                   
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ViewSalesBillPage(billItem: item, customer: fullCustomer),
+                      builder: (context) => ViewSalesBillPage(bill: item, customer: fullCustomer),
                     ),
                   );
                 },
@@ -891,7 +898,7 @@ class _BillingPageState extends State<BillingPage> {
     );
   }
 
-  Widget _buildMobileCards(List<BillItem> items) {
+  Widget _buildMobileCards(List<Bill> items) {
     final paginatedItems = items.skip(_currentPage * _rowsPerPage).take(_rowsPerPage).toList();
 
     if (_isChangingPage) {
@@ -908,17 +915,24 @@ class _BillingPageState extends State<BillingPage> {
       separatorBuilder: (context, index) => const Divider(height: 1, thickness: 1),
       itemBuilder: (context, index) {
         final item = paginatedItems[index];
-        final customerName = _getCustomerName(item.customerId);
+        final customerName = item.customerName;
         return InkWell(
           onTap: () {
             final customerProvider = Provider.of<CustomerProvider>(context, listen: false);
             final fullCustomer = customerProvider.getCustomerById(item.customerId) ?? 
-                Customer(id: item.customerId, name: customerName, phone: 'N/A', address: 'N/A', email: '', customerSince: DateTime.now());
+                Customer(
+                  id: item.customerId, 
+                  name: item.customerName, 
+                  phone: item.customerPhone.isNotEmpty ? item.customerPhone : 'NA', 
+                  address: item.customerAddress.isNotEmpty ? item.customerAddress : 'NA', 
+                  email: '', 
+                  customerSince: item.date,
+                );
             
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => ViewSalesBillPage(billItem: item, customer: fullCustomer),
+                builder: (context) => ViewSalesBillPage(bill: item, customer: fullCustomer),
               ),
             );
           },
@@ -962,7 +976,7 @@ class _BillingPageState extends State<BillingPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '₹${item.totalValue.toStringAsFixed(2)}',
+                        '₹${item.grandTotal.toStringAsFixed(2)}',
                         style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0077B6), fontSize: 14),
                       ),
                     ],
@@ -991,7 +1005,7 @@ class _BillingPageState extends State<BillingPage> {
 }
 
 class _HoverTableRow extends StatefulWidget {
-  final BillItem item;
+  final Bill item;
   final String customerName;
   final VoidCallback onTap;
 
@@ -1053,7 +1067,7 @@ class _HoverTableRowState extends State<_HoverTableRow> {
                 child: Text(widget.item.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)),
               ),
               Expanded(
-                child: Text('₹${widget.item.totalValue.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0077B6))),
+                child: Text('₹${widget.item.grandTotal.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0077B6))),
               ),
               Icon(Icons.chevron_right, color: _isHovering ? const Color(0xFF0077B6) : Colors.grey.shade300),
             ],
