@@ -58,7 +58,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
     }
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isPhone = false}) {
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isPhone = false, bool isOptional = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20.0),
       child: TextFormField(
@@ -75,10 +75,11 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
           fillColor: Colors.grey.shade50,
         ),
         keyboardType: isPhone ? TextInputType.phone : TextInputType.text,
-        inputFormatters: isPhone ? [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(15)] : [],
+        inputFormatters: isPhone ? [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)] : [],
         validator: (value) {
+          if (isOptional && (value == null || value.trim().isEmpty)) return null;
           if (value == null || value.trim().isEmpty) return '$label is required';
-          if (isPhone && value.trim().length < 8) return 'Please enter a valid phone number';
+          if (isPhone && value.trim().length != 10) return 'Phone number must be exactly 10 digits';
           return null;
         },
       ),
@@ -159,7 +160,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
     customerBills.sort((a, b) => b.date.compareTo(a.date)); // Latest to oldest
 
     final totalSales = customerBills.length;
-    final totalRevenue = customerBills.fold(0.0, (curr, next) => curr + next.totalValue);
+    final totalRevenue = customerBills.fold(0.0, (curr, next) => curr + next.grandTotal);
     final currencyFormatter = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
     return Scaffold(
@@ -246,7 +247,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
                     if (MediaQuery.of(context).size.width < 600) ...[
                       _buildTextField('Full Name', _nameCtrl, Icons.person),
                       _buildTextField('Phone Number', _phoneCtrl, Icons.phone, isPhone: true),
-                      _buildTextField('Email Address', _emailCtrl, Icons.email_outlined),
+                      _buildTextField('Email Address', _emailCtrl, Icons.email_outlined, isOptional: true),
                       _buildTextField('Residential Address', _addressCtrl, Icons.location_on_outlined),
                     ] else ...[
                       Row(
@@ -258,7 +259,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
                       ),
                       Row(
                         children: [
-                          Expanded(child: _buildTextField('Email Address', _emailCtrl, Icons.email_outlined)),
+                          Expanded(child: _buildTextField('Email Address', _emailCtrl, Icons.email_outlined, isOptional: true)),
                           const SizedBox(width: 24),
                           Expanded(child: _buildTextField('Residential Address', _addressCtrl, Icons.location_on_outlined)),
                         ],
@@ -322,7 +323,7 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
                                      DataCell(Text('INV-${bill.slNo.toString().padLeft(4, '0')}', style: const TextStyle(color: Color(0xFF0077B6), fontWeight: FontWeight.bold))),
                                      DataCell(Text(DateFormat('dd MMM yyyy').format(bill.date))),
                                      DataCell(Text(bill.description)),
-                                     DataCell(Text(currencyFormatter.format(bill.totalValue), style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.teal))),
+                                     DataCell(Text(currencyFormatter.format(bill.grandTotal), style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.teal))),
                                    ]
                                  )).toList(),
                                ),

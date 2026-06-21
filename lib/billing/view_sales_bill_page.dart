@@ -1,4 +1,4 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,14 +7,14 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-import 'billing_item_model.dart';
+import 'bill_model.dart';
 import '../customers/customer_model.dart';
 import '../customers/customer_profile_page.dart';
 import '../data/mock_data.dart';
 
 // Converted to a clean StatelessWidget to eliminate createState and widget context compilation conflicts
 class ViewSalesBillPage extends StatelessWidget {
-  final BillItem billItem;
+  final Bill bill;
   final Customer customer;
 
   // Unique notifier for this page instance to cache the generated PDF bytes and prevent CPU-bound re-generation freezes.
@@ -22,7 +22,7 @@ class ViewSalesBillPage extends StatelessWidget {
 
   ViewSalesBillPage({
     super.key,
-    required this.billItem,
+    required this.bill,
     required this.customer,
   });
 
@@ -66,7 +66,7 @@ class ViewSalesBillPage extends StatelessWidget {
   }
 
   static Future<pw.Document> _buildPdfDocumentStatic({
-    required BillItem billItem,
+    required Bill bill,
     required Customer customer,
     required pw.Font ttf,
     required pw.Font ttfItalic,
@@ -101,15 +101,16 @@ class ViewSalesBillPage extends StatelessWidget {
             ],
           );
 
-    final simulatedItems = [billItem];
+    final simulatedItems = bill.items;
     final totalTaxable = simulatedItems.fold(0.0, (sum, item) => sum + item.taxableValue);
     final totalDiscount = simulatedItems.fold(0.0, (sum, item) => sum + item.discAmt);
-    final totalPayable = simulatedItems.fold(0.0, (sum, item) => sum + item.totalValue) - totalDiscount;
+    final totalCgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
+    final totalSgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
+    final totalPayable = double.parse((totalTaxable + totalCgst + totalSgst).toStringAsFixed(2));
     final amountInWordsText = _amountInWords(totalPayable);
 
-    final firstItem = simulatedItems.first;
-    final invoiceNumber = 'SVJ/${firstItem.date.year}/${firstItem.slNo.toString().padLeft(4, '0')}';
-    final invoiceDate = DateFormat('dd-MM-yyyy').format(firstItem.date);
+    final invoiceNumber = bill.invoiceNumber;
+    final invoiceDate = DateFormat('dd-MM-yyyy').format(bill.date);
 
     final pdf = pw.Document();
 
@@ -291,6 +292,7 @@ class ViewSalesBillPage extends StatelessWidget {
 
             // LINE ITEMS DATA TABLE
             pw.Table(
+              defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
               border: pw.TableBorder.all(color: const PdfColor.fromInt(0xFFCCCCCC), width: 0.5),
               columnWidths: const {
                 0: pw.FixedColumnWidth(20),  
@@ -313,10 +315,12 @@ class ViewSalesBillPage extends StatelessWidget {
                   ].map((text) {
                     return pw.Padding(
                       padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 2),
-                      child: pw.Text(
-                        text,
-                        textAlign: text == 'Description' ? pw.TextAlign.left : (['Rate', 'Metal Value', 'Stone Value', 'Total'].contains(text) ? pw.TextAlign.right : pw.TextAlign.center),
-                        style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                      child: pw.Align(
+                        alignment: pw.Alignment.center,
+                        child: pw.Text(
+                          text,
+                          style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                        ),
                       ),
                     );
                   }).toList(),
@@ -364,8 +368,8 @@ class ViewSalesBillPage extends StatelessWidget {
                     children: [
                       pdfTotalRow('Sub Total:', formatCurrencyStr(totalTaxable)),
                       pdfTotalRow('Discount:', '- ${formatCurrencyStr(totalDiscount)}', isDiscount: true),
-                      pdfTotalRow('CGST @ 1.5%:', formatCurrencyStr(totalTaxable * 0.015)),
-                      pdfTotalRow('SGST @ 1.5%:', formatCurrencyStr(totalTaxable * 0.015)),
+                      pdfTotalRow('CGST @ 1.5%:', formatCurrencyStr(totalCgst)),
+                      pdfTotalRow('SGST @ 1.5%:', formatCurrencyStr(totalSgst)),
                       pw.SizedBox(height: 3),
                       pw.Container(
                         color: const PdfColor.fromInt(0xFF2C3E50),
@@ -454,7 +458,7 @@ class ViewSalesBillPage extends StatelessWidget {
         backgroundColor: const Color(0xFF03045E),
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
-          'Invoice Dashboard SVJ/#${billItem.slNo}',
+          'Invoice Dashboard ${bill.invoiceNumber}',
           style: const TextStyle(
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -727,7 +731,7 @@ class ViewSalesBillPage extends StatelessWidget {
                 separatorBuilder: (context, index) => const Divider(height: 1, thickness: 0.5),
                 itemBuilder: (context, index) {
                   final invoice = last5[index];
-                  final isCurrent = invoice.slNo == billItem.slNo;
+                  final isCurrent = invoice.slNo == bill.slNo;
 
                   return InkWell(
                     onTap: () {
@@ -735,7 +739,7 @@ class ViewSalesBillPage extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (context) => ViewSalesBillPage(
-                            billItem: invoice,
+                            bill: invoice,
                             customer: customer,
                           ),
                         ),
@@ -765,12 +769,15 @@ class ViewSalesBillPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Expanded(
+                          SizedBox(
+                            width: 100,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'INV-${invoice.slNo.toString().padLeft(4, '0')}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -780,34 +787,40 @@ class ViewSalesBillPage extends StatelessWidget {
                                 const SizedBox(height: 2),
                                 Text(
                                   DateFormat('dd MMM yyyy').format(invoice.date),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 10, color: Colors.black45),
                                 ),
                               ],
                             ),
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                currencyFormatter.format(invoice.totalValue),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: isCurrent ? const Color(0xFF03045E) : Colors.teal,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  currencyFormatter.format(invoice.grandTotal),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: isCurrent ? const Color(0xFF03045E) : Colors.teal,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                invoice.description,
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.black45,
-                                  fontStyle: FontStyle.italic,
+                                const SizedBox(height: 2),
+                                Text(
+                                  invoice.description,
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.black45,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  textAlign: TextAlign.end,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -822,15 +835,14 @@ class ViewSalesBillPage extends StatelessWidget {
   }
 
   Widget _buildRightDashboardPanel(BuildContext context, {required bool isDesktop}) {
-    final invoiceNumber = 'SVJ/${billItem.date.year}/${billItem.slNo.toString().padLeft(4, '0')}';
-    final invoiceDate = DateFormat('dd-MM-yyyy').format(billItem.date);
+    final invoiceNumber = bill.invoiceNumber;
+    final invoiceDate = DateFormat('dd-MM-yyyy').format(bill.date);
 
-    final simulatedItems = [billItem];
+    final simulatedItems = bill.items;
     final totalTaxable = simulatedItems.fold(0.0, (sum, item) => sum + item.taxableValue);
-    final totalDiscount = simulatedItems.fold(0.0, (sum, item) => sum + item.discAmt);
-    final totalPayable = simulatedItems.fold(0.0, (sum, item) => sum + item.totalValue) - totalDiscount;
-    final totalCgst = totalTaxable * 0.015;
-    final totalSgst = totalTaxable * 0.015;
+    final totalCgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
+    final totalSgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
+    final totalPayable = double.parse((totalTaxable + totalCgst + totalSgst).toStringAsFixed(2));
     final amountInWordsText = _amountInWords(totalPayable);
 
     String formatCurrencyStr(double value) =>
@@ -1263,7 +1275,7 @@ class ViewSalesBillPage extends StatelessWidget {
     await Future.delayed(const Duration(milliseconds: 150));
 
     final bytes = await compute(_generatePdfBytesInBackground, PdfGenerationInput(
-      billItem: billItem,
+      bill: bill,
       customer: customer,
       fontBytes: _cachedFontBytes,
       italicFontBytes: _cachedItalicFontBytes,
@@ -1284,7 +1296,7 @@ class ViewSalesBillPage extends StatelessWidget {
     try {
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) => pdfBytes,
-        name: 'Invoice_SVJ_${billItem.slNo}.pdf',
+        name: 'Invoice_${bill.slNo}.pdf',
       );
     } catch (e) {
       if (context.mounted) {
@@ -1302,7 +1314,7 @@ class ViewSalesBillPage extends StatelessWidget {
     try {
       await Printing.sharePdf(
         bytes: pdfBytes,
-        filename: 'Invoice_SVJ_${billItem.slNo}.pdf',
+        filename: 'Invoice_${bill.slNo}.pdf',
       );
     } catch (e) {
       if (context.mounted) {
@@ -1325,7 +1337,7 @@ class ViewSalesBillPage extends StatelessWidget {
         : pw.Font.helveticaOblique();
 
     final doc = await _buildPdfDocumentStatic(
-      billItem: input.billItem,
+      bill: input.bill,
       customer: input.customer,
       ttf: ttf,
       ttfItalic: ttfItalic,
@@ -1338,7 +1350,7 @@ class ViewSalesBillPage extends StatelessWidget {
 }
 
 class PdfGenerationInput {
-  final BillItem billItem;
+  final Bill bill;
   final Customer customer;
   final Uint8List? fontBytes;
   final Uint8List? italicFontBytes;
@@ -1346,7 +1358,7 @@ class PdfGenerationInput {
   final bool fontsLoadedSuccessfully;
 
   PdfGenerationInput({
-    required this.billItem,
+    required this.bill,
     required this.customer,
     required this.fontBytes,
     required this.italicFontBytes,
