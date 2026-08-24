@@ -48,12 +48,14 @@ class _CreateNewBillPageState extends State<CreateNewBillPage> {
   }
 
   // --- GETTERS & METRIC CALCS ---
-  double get _subtotalTaxable => _billItems.fold(0.0, (sum, item) => sum + item.taxableValue);
-  double get _totalDiscount => _billItems.fold(0.0, (sum, item) => sum + item.discAmt);
-  double get _grossTotal => _billItems.fold(0.0, (sum, item) => sum + item.totalValue);
-  double get _cgst => _subtotalTaxable * 0.015;
-  double get _sgst => _subtotalTaxable * 0.015;
-  double get _grandTotal => _subtotalTaxable + _cgst + _sgst;
+  double get _subtotalTaxable => double.parse(_billItems.fold(0.0, (sum, item) => sum + item.taxableValue).toStringAsFixed(2));
+  double get _totalDiscount => double.parse(_billItems.fold(0.0, (sum, item) => sum + item.discAmt).toStringAsFixed(2));
+  double get _grossTotal => double.parse(_billItems.fold(0.0, (sum, item) => sum + item.totalValue).toStringAsFixed(2));
+  double get _cgst => double.parse((_subtotalTaxable * 0.015).toStringAsFixed(2));
+  double get _sgst => double.parse((_subtotalTaxable * 0.015).toStringAsFixed(2));
+  double get _unroundedGrandTotal => double.parse((_subtotalTaxable + _cgst + _sgst).toStringAsFixed(2));
+  double get _grandTotal => _unroundedGrandTotal.roundToDouble();
+  double get _roundOff => double.parse((_grandTotal - _unroundedGrandTotal).toStringAsFixed(2));
 
   String _formatSimpleDate(DateTime date) {
     return DateFormat('dd/MM/yyyy').format(date);
@@ -789,6 +791,16 @@ class _CreateNewBillPageState extends State<CreateNewBillPage> {
                   Text(formatCurrencyStr(_sgst), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 ],
               ),
+              if (_roundOff != 0.0) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Round Off:', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: Colors.black54)),
+                    Text('${_roundOff >= 0 ? '+' : ''}${formatCurrencyStr(_roundOff)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -993,9 +1005,19 @@ class _CreateNewBillPageState extends State<CreateNewBillPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('CGST (1.5%) & SGST (1.5%):', style: TextStyle(color: Colors.black54)),
-                    Text(formatCurrencyStr(_cgst * 2)),
+                    Text(formatCurrencyStr(_cgst + _sgst)),
                   ],
                 ),
+                if (_roundOff != 0.0) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Round Off:', style: TextStyle(color: Colors.black54)),
+                      Text('${_roundOff >= 0 ? '+' : ''}${formatCurrencyStr(_roundOff)}'),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -1178,7 +1200,7 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
   }
 
   final _hsnCtrl = TextEditingController(text: "71189"); // Default jewellery HSN
-  final _pcsCtrl = TextEditingController();
+  final _pcsCtrl = TextEditingController(text: "1");
   final _grossWtCtrl = TextEditingController();
   final _stoneWtCtrl = TextEditingController();
   final _netWtCtrl = TextEditingController();
@@ -1189,6 +1211,9 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
   final _totalValueCtrl = TextEditingController();
   final _discAmtCtrl = TextEditingController();
   final _taxableValueCtrl = TextEditingController();
+  final _totalPaidCtrl = TextEditingController(); // Total Amount Paid (Incl. 3% GST)
+
+  bool _isBackwardCalcMode = true; // Default: Bottom-Up Backward Calculation from Total Paid Amount
 
   @override
   void dispose() {
@@ -1205,6 +1230,7 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
     _totalValueCtrl.dispose();
     _discAmtCtrl.dispose();
     _taxableValueCtrl.dispose();
+    _totalPaidCtrl.dispose();
     super.dispose();
   }
 
@@ -1212,9 +1238,8 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
     final double gw = double.tryParse(_grossWtCtrl.text) ?? 0.0;
     final double sw = double.tryParse(_stoneWtCtrl.text) ?? 0.0;
     final double mr = double.tryParse(_metalRateCtrl.text) ?? 0.0;
-    final double va = double.tryParse(_vaCtrl.text) ?? 0.0;
     
-    // Excel Rule 5: Stone value field drops to 0 and becomes internally readOnly if StoneWT <= 0.0 logically
+    // Stone value field drops to 0 if Stone Wt <= 0.0
     final bool stoneValueEnabled = sw > 0.0;
     if (!stoneValueEnabled) {
       if (_stoneValueCtrl.text != '0.00' && _stoneValueCtrl.text != '0') {
@@ -1223,31 +1248,68 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
     }
     final double sv = double.tryParse(_stoneValueCtrl.text) ?? 0.0;
 
-    // Excel Rule 1: Net Weight = Gross Wt - Stone Wt
+    // 1. Net Weight = Gross Wt - Stone Wt
     final double nw = gw - sw;
     final validNw = nw < 0 ? 0.0 : nw;
     if (_netWtCtrl.text != validNw.toStringAsFixed(3)) {
        _netWtCtrl.text = validNw.toStringAsFixed(3);
     }
 
-    // Excel Rule 2: Metal Value = Net Wt * Metal Rate
+    // 2. Metal Value = Net Wt * Metal Rate
     final double mv = validNw * mr;
     if (_metalValueCtrl.text != mv.toStringAsFixed(2)) {
        _metalValueCtrl.text = mv.toStringAsFixed(2);
     }
 
-    // Excel Rule 3: Total Value = Metal Value + VA + Stone Value
-    final double tv = mv + va + sv;
-    if (_totalValueCtrl.text != tv.toStringAsFixed(2)) {
-       _totalValueCtrl.text = tv.toStringAsFixed(2);
-    }
+    final double totalPaid = double.tryParse(_totalPaidCtrl.text) ?? 0.0;
 
-    // Excel Rule 4: Taxable Value = Total Value - Disc Amt
-    final double da = double.tryParse(_discAmtCtrl.text) ?? 0.0;
-    final double taxv = tv - da;
-    final validTaxv = taxv < 0 ? 0.0 : taxv;
-    if (_taxableValueCtrl.text != validTaxv.toStringAsFixed(2)) {
-       _taxableValueCtrl.text = validTaxv.toStringAsFixed(2);
+    if (_isBackwardCalcMode && totalPaid > 0.0) {
+      // BOTTOM-UP BACKWARD CALCULATION ENGINE
+      // a. Extract 3% GST from total paid amount
+      final double rawGst = totalPaid * (3.0 / 103.0);
+      final double halfGst = double.parse((rawGst / 2).toStringAsFixed(2));
+      final double totalGst = halfGst * 2;
+
+      // b. Target Taxable Base Value
+      final double targetTaxable = double.parse((totalPaid - totalGst).toStringAsFixed(2));
+      final double baseCost = mv + sv;
+
+      if (targetTaxable >= baseCost) {
+        // Customer paid higher than base cost -> Auto-calculate Making Charges (VA)
+        final double derivedVa = double.parse((targetTaxable - baseCost).toStringAsFixed(2));
+        _vaCtrl.text = derivedVa.toStringAsFixed(2);
+        _discAmtCtrl.text = "0.00";
+        _totalValueCtrl.text = targetTaxable.toStringAsFixed(2);
+        _taxableValueCtrl.text = targetTaxable.toStringAsFixed(2);
+      } else {
+        // Customer paid lower than base cost -> Auto-calculate Discount
+        final double derivedDisc = double.parse((baseCost - targetTaxable).toStringAsFixed(2));
+        _vaCtrl.text = "0.00";
+        _discAmtCtrl.text = derivedDisc.toStringAsFixed(2);
+        _totalValueCtrl.text = baseCost.toStringAsFixed(2);
+        _taxableValueCtrl.text = targetTaxable.toStringAsFixed(2);
+      }
+    } else {
+      // STANDARD FORWARD CALCULATION ENGINE
+      final double va = double.tryParse(_vaCtrl.text) ?? 0.0;
+      final double tv = mv + va + sv;
+      if (_totalValueCtrl.text != tv.toStringAsFixed(2)) {
+         _totalValueCtrl.text = tv.toStringAsFixed(2);
+      }
+
+      final double da = double.tryParse(_discAmtCtrl.text) ?? 0.0;
+      final double taxv = tv - da;
+      final validTaxv = taxv < 0 ? 0.0 : taxv;
+      if (_taxableValueCtrl.text != validTaxv.toStringAsFixed(2)) {
+         _taxableValueCtrl.text = validTaxv.toStringAsFixed(2);
+      }
+
+      final double cgst = double.parse((validTaxv * 0.015).toStringAsFixed(2));
+      final double sgst = double.parse((validTaxv * 0.015).toStringAsFixed(2));
+      final double calcTotalPaid = validTaxv + cgst + sgst;
+      if (_totalPaidCtrl.text != calcTotalPaid.toStringAsFixed(2)) {
+        _totalPaidCtrl.text = calcTotalPaid.toStringAsFixed(2);
+      }
     }
   }
 
@@ -1259,7 +1321,7 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
     // Required number fields must not be empty and must be valid numbers
     final requiredNumberControllers = [
       _hsnCtrl, _pcsCtrl, _grossWtCtrl, _netWtCtrl,
-      _metalRateCtrl, _metalValueCtrl, _vaCtrl, _stoneValueCtrl,
+      _metalRateCtrl, _metalValueCtrl, _stoneValueCtrl,
       _totalValueCtrl, _taxableValueCtrl
     ];
     for (var c in requiredNumberControllers) {
@@ -1267,40 +1329,41 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
       if (double.tryParse(c.text) == null) return false;
     }
 
-    // Optional number fields: if not empty, must be valid numbers
-    final optionalNumberControllers = [
-      _stoneWtCtrl, _discAmtCtrl
-    ];
-    for (var c in optionalNumberControllers) {
-      final val = c.text.trim();
-      if (val.isNotEmpty && double.tryParse(val) == null) {
-        return false;
-      }
-    }
-
-    final double da = double.tryParse(_discAmtCtrl.text) ?? 0.0;
-    final double tv = double.tryParse(_totalValueCtrl.text) ?? 0.0;
-    if (da > tv) return false;
-
     return true;
   }
 
   void _submit() {
     if (_isFormValid) {
-      final newItem = BillItem(
-        slNo: widget.nextItemSl,
-        date: DateTime.now(), // Fallback (overridden by parent save)
-        customerId: '', // Fallback (overridden by parent save)
-        description: _descCtrl.text.trim(),
-        hsnSac: _hsnCtrl.text.trim(),
-        pcs: int.tryParse(_pcsCtrl.text) ?? 1,
-        grossWt: double.tryParse(_grossWtCtrl.text) ?? 0.0,
-        stoneWt: double.tryParse(_stoneWtCtrl.text) ?? 0.0,
-        metalRate: double.tryParse(_metalRateCtrl.text) ?? 0.0,
-        va: double.tryParse(_vaCtrl.text) ?? 0.0,
-        stoneValue: double.tryParse(_stoneValueCtrl.text) ?? 0.0,
-        discAmt: double.tryParse(_discAmtCtrl.text) ?? 0.0,
-      );
+      final double totalPaid = double.tryParse(_totalPaidCtrl.text) ?? 0.0;
+
+      final newItem = (_isBackwardCalcMode && totalPaid > 0.0)
+          ? BillItem.fromTotalPaid(
+              slNo: widget.nextItemSl,
+              date: DateTime.now(),
+              customerId: '',
+              description: _descCtrl.text.trim(),
+              hsnSac: _hsnCtrl.text.trim(),
+              pcs: int.tryParse(_pcsCtrl.text) ?? 1,
+              grossWt: double.tryParse(_grossWtCtrl.text) ?? 0.0,
+              stoneWt: double.tryParse(_stoneWtCtrl.text) ?? 0.0,
+              metalRate: double.tryParse(_metalRateCtrl.text) ?? 0.0,
+              stoneValue: double.tryParse(_stoneValueCtrl.text) ?? 0.0,
+              totalPaidAmount: totalPaid,
+            )
+          : BillItem(
+              slNo: widget.nextItemSl,
+              date: DateTime.now(),
+              customerId: '',
+              description: _descCtrl.text.trim(),
+              hsnSac: _hsnCtrl.text.trim(),
+              pcs: int.tryParse(_pcsCtrl.text) ?? 1,
+              grossWt: double.tryParse(_grossWtCtrl.text) ?? 0.0,
+              stoneWt: double.tryParse(_stoneWtCtrl.text) ?? 0.0,
+              metalRate: double.tryParse(_metalRateCtrl.text) ?? 0.0,
+              va: double.tryParse(_vaCtrl.text) ?? 0.0,
+              stoneValue: double.tryParse(_stoneValueCtrl.text) ?? 0.0,
+              discAmt: double.tryParse(_discAmtCtrl.text) ?? 0.0,
+            );
       Navigator.of(context).pop(newItem);
     }
   }
@@ -1519,6 +1582,53 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF03045E).withAlpha(12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF0077B6).withAlpha(50)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calculate_outlined, color: Color(0xFF03045E), size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _isBackwardCalcMode
+                                        ? 'Bottom-Up Calculation (Auto VA/Discount)'
+                                        : 'Forward Calculation Mode',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF03045E)),
+                                  ),
+                                  Text(
+                                    _isBackwardCalcMode
+                                        ? 'Enter Total Paid Amount to auto-calculate Making Charges / Discount.'
+                                        : 'Enter Making Charges manually to calculate Total Paid Amount.',
+                                    style: const TextStyle(fontSize: 11, color: Colors.black54),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: _isBackwardCalcMode,
+                              activeThumbColor: const Color(0xFF0077B6),
+                              onChanged: (val) {
+                                setState(() {
+                                  _isBackwardCalcMode = val;
+                                  _recalculate();
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_isBackwardCalcMode) ...[
+                        _buildTextField('Total Amount Paid (Incl. 3% GST)', _totalPaidCtrl, isNumber: true, isDecimal: true),
+                      ],
                       _buildTextField('Description of Goods', _descCtrl, isDescription: true),
                       _buildResponsiveRow(
                         context,
@@ -1539,15 +1649,18 @@ class _CreateItemDialogState extends State<_CreateItemDialog> {
                       _buildTextField('Metal Value', _metalValueCtrl, isNumber: true, isDecimal: true, readOnly: true),
                       _buildResponsiveRow(
                         context,
-                        _buildTextField('VA / Making.', _vaCtrl, isNumber: true, isDecimal: true),
+                        _buildTextField('VA / Making', _vaCtrl, isNumber: true, isDecimal: true, readOnly: _isBackwardCalcMode),
                         _buildTextField('Stone Value', _stoneValueCtrl, isNumber: true, isDecimal: true, readOnly: !stoneValueEnabled),
                       ),
                       _buildTextField('Total Value', _totalValueCtrl, isNumber: true, isDecimal: true, readOnly: true),
                       _buildResponsiveRow(
                         context,
-                        _buildTextField('Disc Amt.', _discAmtCtrl, isNumber: true, isDecimal: true),
+                        _buildTextField('Disc Amt.', _discAmtCtrl, isNumber: true, isDecimal: true, readOnly: _isBackwardCalcMode),
                         _buildTextField('Taxable Value', _taxableValueCtrl, isNumber: true, isDecimal: true, readOnly: true),
                       ),
+                      if (!_isBackwardCalcMode) ...[
+                        _buildTextField('Total Amount Paid (Incl. 3% GST)', _totalPaidCtrl, isNumber: true, isDecimal: true, readOnly: true),
+                      ],
                     ],
                   ),
                 ),

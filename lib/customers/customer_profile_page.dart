@@ -155,8 +155,10 @@ class _CustomerProfilePageState extends State<CustomerProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic Stats
-    final customerBills = sharedMockItems.where((b) => b.customerId == widget.customer.id).toList();
+    final customerBills = sharedMockItems.where((b) =>
+      (widget.customer.id.isNotEmpty && b.customerId == widget.customer.id) ||
+      (b.customerName.trim().toLowerCase() == widget.customer.name.trim().toLowerCase())
+    ).toList();
     customerBills.sort((a, b) => b.date.compareTo(a.date)); // Latest to oldest
 
     final totalSales = customerBills.length;

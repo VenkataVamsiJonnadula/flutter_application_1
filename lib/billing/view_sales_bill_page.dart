@@ -24,11 +24,18 @@ class ViewSalesBillPage extends StatelessWidget {
     super.key,
     required this.bill,
     required this.customer,
-  });
+  }) {
+    _loadAssets();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _prewarmPdf();
+    });
+  }
 
   // Static cache to persist loaded assets across page opens
   static Uint8List? _cachedFontBytes;
   static Uint8List? _cachedItalicFontBytes;
+  static pw.Font? _parsedTtf;
+  static pw.Font? _parsedTtfItalic;
   static String? _cachedSvgString;
   static bool _fontsLoadedSuccessfully = false;
   static bool _hasLoadedAssets = false;
@@ -49,20 +56,51 @@ class ViewSalesBillPage extends StatelessWidget {
     try {
       final fontData = await rootBundle.load('assets/Rubik-VariableFont_wght.ttf');
       _cachedFontBytes = fontData.buffer.asUint8List();
+      _parsedTtf = pw.Font.ttf(ByteData.sublistView(_cachedFontBytes!));
 
       final italicData = await rootBundle.load('assets/Rubik-Italic-VariableFont_wght.ttf');
       _cachedItalicFontBytes = italicData.buffer.asUint8List();
+      _parsedTtfItalic = pw.Font.ttf(ByteData.sublistView(_cachedItalicFontBytes!));
 
       _fontsLoadedSuccessfully = true;
     } catch (e) {
       debugPrint("Custom font asset load failed, falling back to clean system font defaults: $e");
       _cachedFontBytes = null;
       _cachedItalicFontBytes = null;
+      _parsedTtf = pw.Font.helvetica();
+      _parsedTtfItalic = pw.Font.helveticaOblique();
       _fontsLoadedSuccessfully = false;
     }
 
     _hasLoadedAssets = true;
     _isLoadingAssetsNotifier.value = false;
+  }
+
+  void _prewarmPdf() async {
+    if (_cachedPdfBytesNotifier.value != null) return;
+
+    // Yield control to let Flutter build and present the UI view first without lag
+    await Future.delayed(const Duration(milliseconds: 80));
+
+    while (_isLoadingAssetsNotifier.value) {
+      await Future.delayed(const Duration(milliseconds: 15));
+    }
+
+    if (_cachedPdfBytesNotifier.value == null) {
+      try {
+        final doc = await _buildPdfDocumentStatic(
+          bill: bill,
+          customer: customer,
+          ttf: _parsedTtf ?? pw.Font.helvetica(),
+          ttfItalic: _parsedTtfItalic ?? pw.Font.helveticaOblique(),
+          rawSvgString: _cachedSvgString ?? '',
+          fontsLoadedSuccessfully: _fontsLoadedSuccessfully,
+        );
+        _cachedPdfBytesNotifier.value = await doc.save();
+      } catch (e) {
+        debugPrint("Background PDF prewarm error: $e");
+      }
+    }
   }
 
   static Future<pw.Document> _buildPdfDocumentStatic({
@@ -78,7 +116,7 @@ class ViewSalesBillPage extends StatelessWidget {
     final String bulletDecor = fontsLoadedSuccessfully ? '✦' : '-';
 
     final pw.Widget logoWidget = rawSvgString.isNotEmpty
-        ? pw.SizedBox(width: 210, height: 105, child: pw.SvgImage(svg: rawSvgString, fit: pw.BoxFit.contain))
+        ? pw.SizedBox(width: 212, height: 106, child: pw.SvgImage(svg: rawSvgString, fit: pw.BoxFit.contain))
         : pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             mainAxisSize: pw.MainAxisSize.min,
@@ -106,7 +144,9 @@ class ViewSalesBillPage extends StatelessWidget {
     final totalDiscount = simulatedItems.fold(0.0, (sum, item) => sum + item.discAmt);
     final totalCgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
     final totalSgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
-    final totalPayable = double.parse((totalTaxable + totalCgst + totalSgst).toStringAsFixed(2));
+    final unroundedPayable = double.parse((totalTaxable + totalCgst + totalSgst).toStringAsFixed(2));
+    final totalPayable = unroundedPayable.roundToDouble();
+    final roundOff = double.parse((totalPayable - unroundedPayable).toStringAsFixed(2));
     final amountInWordsText = _amountInWords(totalPayable);
 
     final invoiceNumber = bill.invoiceNumber;
@@ -234,6 +274,45 @@ class ViewSalesBillPage extends StatelessWidget {
           );
         },
         build: (pw.Context context) {
+          // DYNAMIC ON-THE-FLY COLUMN WIDTH CALCULATION
+          // Dynamically measures required width per column for the current bill's data (handles lakhs/crores and long descriptions)
+          double measureColWidth(String header, List<String> dataValues) {
+            int maxLen = header.length;
+            for (final v in dataValues) {
+              if (v.length > maxLen) maxLen = v.length;
+            }
+            return maxLen * 4.5;
+          }
+
+          final double w0 = measureColWidth('S.No', List.generate(simulatedItems.length, (i) => (i + 1).toString()));
+          final double w1 = measureColWidth('Description', simulatedItems.map((e) => e.description).toList());
+          final double w2 = measureColWidth('HSN', simulatedItems.map((e) => e.hsnSac).toList());
+          final double w3 = measureColWidth('Gr.Wt', simulatedItems.map((e) => e.grossWt.toStringAsFixed(3)).toList());
+          final double w4 = measureColWidth('St.Wt', simulatedItems.map((e) => e.stoneWt.toStringAsFixed(3)).toList());
+          final double w5 = measureColWidth('Net Wt', simulatedItems.map((e) => e.netWt.toStringAsFixed(3)).toList());
+          final double w6 = measureColWidth('Rate', simulatedItems.map((e) => formatCurrencyStr(e.metalRate)).toList());
+          final double w7 = measureColWidth('Metal Value', simulatedItems.map((e) => formatCurrencyStr(e.metalValue)).toList());
+          final double w8 = measureColWidth('Stone Value', simulatedItems.map((e) => formatCurrencyStr(e.stoneValue)).toList());
+          final double w9 = measureColWidth('Making', simulatedItems.map((e) => formatCurrencyStr(e.va)).toList());
+          final double w10 = measureColWidth('Total', simulatedItems.map((e) => formatCurrencyStr(e.totalValue)).toList());
+
+          final double minTotalRequired = w0 + w1 + w2 + w3 + w4 + w5 + w6 + w7 + w8 + w9 + w10;
+          const double totalPrintableWidth = 539.28;
+          final double remainingSpace = totalPrintableWidth > minTotalRequired ? (totalPrintableWidth - minTotalRequired) : 0.0;
+          final double equalPaddingPerCol = remainingSpace / 11.0;
+
+          final double col0 = w0 + equalPaddingPerCol;
+          final double col1 = w1 + equalPaddingPerCol;
+          final double col2 = w2 + equalPaddingPerCol;
+          final double col3 = w3 + equalPaddingPerCol;
+          final double col4 = w4 + equalPaddingPerCol;
+          final double col5 = w5 + equalPaddingPerCol;
+          final double col6 = w6 + equalPaddingPerCol;
+          final double col7 = w7 + equalPaddingPerCol;
+          final double col8 = w8 + equalPaddingPerCol;
+          final double col9 = w9 + equalPaddingPerCol;
+          final double col10 = totalPrintableWidth - (col0 + col1 + col2 + col3 + col4 + col5 + col6 + col7 + col8 + col9);
+
           return [
             // FIXED VISUAL PARITY: Explicitly namespaced alignment calls safely bound to the PDF layout context tree
             pw.Row(
@@ -283,9 +362,9 @@ class ViewSalesBillPage extends StatelessWidget {
               children: [
                 pw.Text('Bill To:', style: pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF1A1A1A))),
                 pw.SizedBox(height: 2),
-                pw.Text(customer.name, style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF1A1A1A))),
-                pw.Text(customer.address, style: const pw.TextStyle(fontSize: 9.5, color: PdfColor.fromInt(0xFF333333))),
-                pw.Text('Phone: ${customer.phone}', style: const pw.TextStyle(fontSize: 9.5, color: PdfColor.fromInt(0xFF333333))),
+                pw.Text(bill.customerName.isNotEmpty ? bill.customerName : customer.name, style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF1A1A1A))),
+                pw.Text(bill.customerAddress.isNotEmpty ? bill.customerAddress : customer.address, style: const pw.TextStyle(fontSize: 9.5, color: PdfColor.fromInt(0xFF333333))),
+                pw.Text('Phone: ${bill.customerPhone.isNotEmpty ? bill.customerPhone : customer.phone}', style: const pw.TextStyle(fontSize: 9.5, color: PdfColor.fromInt(0xFF333333))),
               ],
             ),
             pw.SizedBox(height: 12),
@@ -294,51 +373,55 @@ class ViewSalesBillPage extends StatelessWidget {
             pw.Table(
               defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
               border: pw.TableBorder.all(color: const PdfColor.fromInt(0xFFCCCCCC), width: 0.5),
-              columnWidths: const {
-                0: pw.FixedColumnWidth(20),  
-                1: pw.FlexColumnWidth(2.2),  
-                2: pw.FixedColumnWidth(40),  
-                3: pw.FixedColumnWidth(20),  
-                4: pw.FixedColumnWidth(34),  
-                5: pw.FixedColumnWidth(34),  
-                6: pw.FixedColumnWidth(34),  
-                7: pw.FixedColumnWidth(45),  
-                8: pw.FixedColumnWidth(52),  
-                9: pw.FixedColumnWidth(52),  
-                10: pw.FixedColumnWidth(58), 
+              columnWidths: {
+                0: pw.FixedColumnWidth(col0),
+                1: pw.FixedColumnWidth(col1),
+                2: pw.FixedColumnWidth(col2),
+                3: pw.FixedColumnWidth(col3),
+                4: pw.FixedColumnWidth(col4),
+                5: pw.FixedColumnWidth(col5),
+                6: pw.FixedColumnWidth(col6),
+                7: pw.FixedColumnWidth(col7),
+                8: pw.FixedColumnWidth(col8),
+                9: pw.FixedColumnWidth(col9),
+                10: pw.FixedColumnWidth(col10),
               },
               children: [
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFF2C3E50)),
                   children: [
-                    'S.No', 'Description', 'HSN', 'PCS', 'Gr.Wt', 'St.Wt', 'Net Wt', 'Rate', 'Metal Value', 'Stone Value', 'Total'
+                    'S.No', 'Description', 'HSN', 'Gr.Wt', 'St.Wt', 'Net Wt', 'Rate', 'Metal Value', 'Stone Value', 'Making', 'Total'
                   ].map((text) {
                     return pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+                      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 3),
                       child: pw.Align(
                         alignment: pw.Alignment.center,
                         child: pw.Text(
                           text,
-                          style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                          style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                          maxLines: 1,
+                          softWrap: false,
                         ),
                       ),
                     );
                   }).toList(),
                 ),
-                ...simulatedItems.map((item) {
+                ...simulatedItems.asMap().entries.map((entry) {
+                  final idx = entry.key;
+                  final item = entry.value;
                   return pw.TableRow(
                     children: [
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(item.slNo.toString(), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(item.description, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(item.hsnSac, textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(item.pcs.toString(), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(item.grossWt.toStringAsFixed(2), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(item.stoneWt.toStringAsFixed(2), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(item.netWt.toStringAsFixed(2), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(formatCurrencyStr(item.metalRate), textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(formatCurrencyStr(item.metalValue), textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(formatCurrencyStr(item.stoneValue), textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 8))),
-                      pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(formatCurrencyStr(item.totalValue), textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 8))),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text((idx + 1).toString(), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(item.description, textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(item.hsnSac, textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(item.grossWt.toStringAsFixed(3), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(item.stoneWt.toStringAsFixed(3), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(item.netWt.toStringAsFixed(3), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(formatCurrencyStr(item.metalRate), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(formatCurrencyStr(item.metalValue), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(formatCurrencyStr(item.stoneValue), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(formatCurrencyStr(item.va), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
+                      pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 3), child: pw.Text(formatCurrencyStr(item.totalValue), textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 7.5), maxLines: 1, softWrap: false)),
                     ],
                   );
                 }),
@@ -366,10 +449,11 @@ class ViewSalesBillPage extends StatelessWidget {
                   width: 195,
                   child: pw.Column(
                     children: [
+                      if (totalDiscount > 0.0) pdfTotalRow('Discount:', '- ${formatCurrencyStr(totalDiscount)}', isDiscount: true),
                       pdfTotalRow('Sub Total:', formatCurrencyStr(totalTaxable)),
-                      pdfTotalRow('Discount:', '- ${formatCurrencyStr(totalDiscount)}', isDiscount: true),
                       pdfTotalRow('CGST @ 1.5%:', formatCurrencyStr(totalCgst)),
                       pdfTotalRow('SGST @ 1.5%:', formatCurrencyStr(totalSgst)),
+                      if (roundOff != 0.0) pdfTotalRow('Round Off:', '${roundOff >= 0 ? '+' : ''}${formatCurrencyStr(roundOff)}'),
                       pw.SizedBox(height: 3),
                       pw.Container(
                         color: const PdfColor.fromInt(0xFF2C3E50),
@@ -553,6 +637,15 @@ class ViewSalesBillPage extends StatelessWidget {
 
 
   Widget _buildCustomerCRMCard(BuildContext context) {
+    final activeCustomer = Customer(
+      id: bill.customerId.isNotEmpty ? bill.customerId : customer.id,
+      name: bill.customerName.isNotEmpty ? bill.customerName : customer.name,
+      phone: bill.customerPhone.isNotEmpty ? bill.customerPhone : customer.phone,
+      address: bill.customerAddress.isNotEmpty ? bill.customerAddress : customer.address,
+      email: customer.email,
+      customerSince: customer.customerSince,
+    );
+
     return Card(
       elevation: 2,
       shadowColor: Colors.black12,
@@ -579,7 +672,7 @@ class ViewSalesBillPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (context) => CustomerProfilePage(
-                      customer: customer,
+                      customer: activeCustomer,
                       onBack: () => Navigator.pop(context),
                     ),
                   ),
@@ -594,7 +687,7 @@ class ViewSalesBillPage extends StatelessWidget {
                       backgroundColor: const Color(0xFF0077B6),
                       radius: 28,
                       child: Text(
-                        customer.name.isNotEmpty ? customer.name.substring(0, 1).toUpperCase() : '?',
+                        activeCustomer.name.isNotEmpty ? activeCustomer.name.substring(0, 1).toUpperCase() : '?',
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.bold,
@@ -608,7 +701,7 @@ class ViewSalesBillPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            customer.name,
+                            activeCustomer.name,
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -619,7 +712,7 @@ class ViewSalesBillPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'ID: ${customer.id}',
+                            'ID: ${activeCustomer.id}',
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
@@ -637,12 +730,12 @@ class ViewSalesBillPage extends StatelessWidget {
             const SizedBox(height: 16),
             const Divider(height: 1, thickness: 0.5),
             const SizedBox(height: 16),
-            _buildInfoRow(Icons.phone_outlined, customer.phone, 'Phone'),
+            _buildInfoRow(Icons.phone_outlined, activeCustomer.phone, 'Phone'),
             const SizedBox(height: 12),
-            _buildInfoRow(Icons.location_on_outlined, customer.address, 'Address'),
-            if (customer.email.isNotEmpty) ...[
+            _buildInfoRow(Icons.location_on_outlined, activeCustomer.address, 'Address'),
+            if (activeCustomer.email.isNotEmpty) ...[
               const SizedBox(height: 12),
-              _buildInfoRow(Icons.email_outlined, customer.email, 'Email'),
+              _buildInfoRow(Icons.email_outlined, activeCustomer.email, 'Email'),
             ],
           ],
         ),
@@ -686,9 +779,33 @@ class ViewSalesBillPage extends StatelessWidget {
   }
 
   Widget _buildRecentPurchasesList(BuildContext context) {
-    final customerInvoices = sharedMockItems
-        .where((item) => item.customerId == customer.id)
-        .toList();
+    final isRegistered = !bill.isOneTime &&
+        bill.customerId.isNotEmpty &&
+        bill.customerId != 'ONE-TIME' &&
+        bill.customerId != 'GUEST';
+
+    final customerInvoices = sharedMockItems.where((item) {
+      // Exclude the current bill being viewed so only alternate bills are displayed
+      if (item.slNo == bill.slNo || item.invoiceNumber == bill.invoiceNumber) {
+        return false;
+      }
+      
+      if (isRegistered) {
+        // Registered customer: match by registered Customer ID or exact Name
+        final sameId = item.customerId.isNotEmpty &&
+            item.customerId != 'ONE-TIME' &&
+            item.customerId != 'GUEST' &&
+            item.customerId == bill.customerId;
+        final sameName = item.customerName.trim().toLowerCase() == bill.customerName.trim().toLowerCase();
+        return sameId || sameName;
+      } else {
+        // Unregistered / One-time / Guest customer: ONLY group if they share the exact SAME name (case-insensitive)
+        final billName = bill.customerName.trim().toLowerCase();
+        final itemName = item.customerName.trim().toLowerCase();
+        return billName != 'na' && billName.isNotEmpty && itemName == billName;
+      }
+    }).toList();
+
     customerInvoices.sort((a, b) => b.date.compareTo(a.date));
     final last5 = customerInvoices.take(5).toList();
     final currencyFormatter = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
@@ -704,7 +821,7 @@ class ViewSalesBillPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'RECENT PURCHASES',
+              'ALTERNATE PURCHASES',
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
@@ -718,7 +835,7 @@ class ViewSalesBillPage extends StatelessWidget {
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(
                   child: Text(
-                    'No previous purchase records.',
+                    'No alternate purchase records found.',
                     style: TextStyle(fontSize: 12, color: Colors.black38),
                   ),
                 ),
@@ -734,17 +851,29 @@ class ViewSalesBillPage extends StatelessWidget {
                   final isCurrent = invoice.slNo == bill.slNo;
 
                   return InkWell(
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ViewSalesBillPage(
-                            bill: invoice,
-                            customer: customer,
-                          ),
-                        ),
-                      );
-                    },
+                    onTap: isCurrent
+                        ? null
+                        : () {
+                            final targetCustomer = Customer(
+                              id: invoice.customerId,
+                              name: invoice.customerName,
+                              phone: invoice.customerPhone,
+                              address: invoice.customerAddress,
+                              email: '',
+                              customerSince: invoice.date,
+                            );
+                            Navigator.pushReplacement(
+                              context,
+                              PageRouteBuilder(
+                                pageBuilder: (context, animation1, animation2) => ViewSalesBillPage(
+                                  bill: invoice,
+                                  customer: targetCustomer,
+                                ),
+                                transitionDuration: Duration.zero,
+                                reverseTransitionDuration: Duration.zero,
+                              ),
+                            );
+                          },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
@@ -842,7 +971,9 @@ class ViewSalesBillPage extends StatelessWidget {
     final totalTaxable = simulatedItems.fold(0.0, (sum, item) => sum + item.taxableValue);
     final totalCgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
     final totalSgst = double.parse((totalTaxable * 0.015).toStringAsFixed(2));
-    final totalPayable = double.parse((totalTaxable + totalCgst + totalSgst).toStringAsFixed(2));
+    final unroundedPayable = double.parse((totalTaxable + totalCgst + totalSgst).toStringAsFixed(2));
+    final totalPayable = unroundedPayable.roundToDouble();
+    final roundOff = double.parse((totalPayable - unroundedPayable).toStringAsFixed(2));
     final amountInWordsText = _amountInWords(totalPayable);
 
     String formatCurrencyStr(double value) =>
@@ -970,6 +1101,7 @@ class ViewSalesBillPage extends StatelessWidget {
           totalTaxable: totalTaxable,
           totalCgst: totalCgst,
           totalSgst: totalSgst,
+          roundOff: roundOff,
           totalPayable: totalPayable,
           amountInWordsText: amountInWordsText,
           formatCurrencyStr: formatCurrencyStr,
@@ -982,6 +1114,7 @@ class ViewSalesBillPage extends StatelessWidget {
     required double totalTaxable,
     required double totalCgst,
     required double totalSgst,
+    required double roundOff,
     required double totalPayable,
     required String amountInWordsText,
     required String Function(double) formatCurrencyStr,
@@ -1019,6 +1152,10 @@ class ViewSalesBillPage extends StatelessWidget {
                   _buildSummaryRowItem('CGST (1.5%)', formatCurrencyStr(totalCgst)),
                   const SizedBox(height: 10),
                   _buildSummaryRowItem('SGST (1.5%)', formatCurrencyStr(totalSgst)),
+                  if (roundOff != 0.0) ...[
+                    const SizedBox(height: 10),
+                    _buildSummaryRowItem('Round Off', '${roundOff >= 0 ? '+' : ''}${formatCurrencyStr(roundOff)}'),
+                  ],
                   const SizedBox(height: 12),
                   const Divider(height: 1, thickness: 0.5),
                   const SizedBox(height: 16),
@@ -1058,7 +1195,7 @@ class ViewSalesBillPage extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'RUPEES ${amountInWordsText.toUpperCase()} ONLY',
+                            'RUPEES ${amountInWordsText.replaceAll(RegExp(r'\s+only$', caseSensitive: false), '').toUpperCase()} ONLY',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
@@ -1225,68 +1362,52 @@ class ViewSalesBillPage extends StatelessWidget {
       return _cachedPdfBytesNotifier.value!;
     }
 
-    // Wait if assets are still loading in the background
-    while (_isLoadingAssetsNotifier.value) {
-      await Future.delayed(const Duration(milliseconds: 50));
-    }
+    final ValueNotifier<double> progressNotifier = ValueNotifier<double>(0.15);
+    final ValueNotifier<String> statusNotifier = ValueNotifier<String>('Loading Font Assets & Branding Logo...');
 
-    // Show progress dialog to notify user that PDF is compiling
+    bool dialogShown = false;
+
     if (context.mounted) {
+      dialogShown = true;
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: Card(
-            elevation: 8,
-            shadowColor: Colors.black26,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: Color(0xFF03045E)),
-                  SizedBox(height: 20),
-                  Text(
-                    'Generating Invoice PDF...',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Color(0xFF03045E),
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    'Compiling vector document assets',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black45,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        builder: (context) => _PdfPercentageProgressDialog(
+          progressNotifier: progressNotifier,
+          statusNotifier: statusNotifier,
         ),
       );
     }
 
-    // Give framework time to render the loading dialog
-    await Future.delayed(const Duration(milliseconds: 150));
+    while (_isLoadingAssetsNotifier.value) {
+      await Future.delayed(const Duration(milliseconds: 15));
+    }
 
-    final bytes = await compute(_generatePdfBytesInBackground, PdfGenerationInput(
+    progressNotifier.value = 0.50;
+    statusNotifier.value = 'Calculating Totals & Formatting Layout...';
+    await Future.delayed(const Duration(milliseconds: 20));
+
+    progressNotifier.value = 0.85;
+    statusNotifier.value = 'Compiling High-Resolution Vector PDF Pages...';
+
+    final doc = await _buildPdfDocumentStatic(
       bill: bill,
       customer: customer,
-      fontBytes: _cachedFontBytes,
-      italicFontBytes: _cachedItalicFontBytes,
-      svgString: _cachedSvgString ?? '',
+      ttf: _parsedTtf ?? pw.Font.helvetica(),
+      ttfItalic: _parsedTtfItalic ?? pw.Font.helveticaOblique(),
+      rawSvgString: _cachedSvgString ?? '',
       fontsLoadedSuccessfully: _fontsLoadedSuccessfully,
-    ));
+    );
 
+    final bytes = await doc.save();
     _cachedPdfBytesNotifier.value = bytes;
 
-    if (context.mounted) {
-      Navigator.pop(context); // Dismiss the progress dialog
+    progressNotifier.value = 1.0;
+    statusNotifier.value = 'Complete 100%! Opening Print Dialog...';
+    await Future.delayed(const Duration(milliseconds: 30));
+
+    if (dialogShown && context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
     }
 
     return bytes;
@@ -1297,6 +1418,7 @@ class ViewSalesBillPage extends StatelessWidget {
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) => pdfBytes,
         name: 'Invoice_${bill.slNo}.pdf',
+        format: PdfPageFormat.a4,
       );
     } catch (e) {
       if (context.mounted) {
@@ -1327,42 +1449,97 @@ class ViewSalesBillPage extends StatelessWidget {
       }
     }
   }
-
-  static Future<Uint8List> _generatePdfBytesInBackground(PdfGenerationInput input) async {
-    final pw.Font ttf = input.fontBytes != null
-        ? pw.Font.ttf(ByteData.sublistView(input.fontBytes!))
-        : pw.Font.helvetica();
-    final pw.Font ttfItalic = input.italicFontBytes != null
-        ? pw.Font.ttf(ByteData.sublistView(input.italicFontBytes!))
-        : pw.Font.helveticaOblique();
-
-    final doc = await _buildPdfDocumentStatic(
-      bill: input.bill,
-      customer: input.customer,
-      ttf: ttf,
-      ttfItalic: ttfItalic,
-      rawSvgString: input.svgString,
-      fontsLoadedSuccessfully: input.fontsLoadedSuccessfully,
-    );
-
-    return doc.save();
-  }
 }
 
-class PdfGenerationInput {
-  final Bill bill;
-  final Customer customer;
-  final Uint8List? fontBytes;
-  final Uint8List? italicFontBytes;
-  final String svgString;
-  final bool fontsLoadedSuccessfully;
+class _PdfPercentageProgressDialog extends StatelessWidget {
+  final ValueNotifier<double> progressNotifier;
+  final ValueNotifier<String> statusNotifier;
 
-  PdfGenerationInput({
-    required this.bill,
-    required this.customer,
-    required this.fontBytes,
-    required this.italicFontBytes,
-    required this.svgString,
-    required this.fontsLoadedSuccessfully,
+  const _PdfPercentageProgressDialog({
+    required this.progressNotifier,
+    required this.statusNotifier,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<double>(
+      valueListenable: progressNotifier,
+      builder: (context, progress, _) {
+        final percent = (progress * 100).clamp(0, 100).toInt();
+        return ValueListenableBuilder<String>(
+          valueListenable: statusNotifier,
+          builder: (context, statusText, _) {
+            return Center(
+              child: Card(
+                elevation: 12,
+                shadowColor: const Color(0xFF03045E).withAlpha(40),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                child: Container(
+                  width: 320,
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 72,
+                            height: 72,
+                            child: CircularProgressIndicator(
+                              value: progress > 0 ? progress : null,
+                              strokeWidth: 6,
+                              backgroundColor: const Color(0xFF03045E).withAlpha(25),
+                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0077B6)),
+                            ),
+                          ),
+                          Text(
+                            '$percent%',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF03045E),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Generating Invoice PDF',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFF03045E),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        statusText,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: progress > 0 ? progress : null,
+                          minHeight: 6,
+                          backgroundColor: Colors.grey.shade200,
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0077B6)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
