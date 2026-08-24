@@ -1082,12 +1082,15 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
     List<double> silverTotals = List.filled(12, 0.0);
     
     final yearItems = sharedMockItems.where((item) => item.date.year == _selectedYear).toList();
-    for (var item in yearItems) {
-      int month = item.date.month - 1; 
-      if (item.description.toLowerCase().contains('gold')) {
-        goldTotals[month] += (item.totalValue / 1000.0); // Scale down for chart (thousands)
-      } else if (item.description.toLowerCase().contains('silver')) {
-        silverTotals[month] += (item.totalValue / 1000.0); 
+    for (var bill in yearItems) {
+      int month = bill.date.month - 1; 
+      for (var item in bill.items) {
+        final desc = item.description.toLowerCase();
+        if (desc.contains('gold')) {
+          goldTotals[month] += (item.totalValue / 1000.0); // Scale down for chart (thousands)
+        } else if (desc.contains('silver')) {
+          silverTotals[month] += (item.totalValue / 1000.0); 
+        }
       }
     }
 
@@ -1277,11 +1280,14 @@ class _DashboardLandingPageState extends State<DashboardLandingPage> {
       }
     });
 
-    for (var item in filteredItems) {
-      if (item.description.toLowerCase().contains('gold')) {
-        goldTotal += item.totalValue;
-      } else if (item.description.toLowerCase().contains('silver')) {
-        silverTotal += item.totalValue;
+    for (var bill in filteredItems) {
+      for (var item in bill.items) {
+        final desc = item.description.toLowerCase();
+        if (desc.contains('gold')) {
+          goldTotal += item.totalValue;
+        } else if (desc.contains('silver')) {
+          silverTotal += item.totalValue;
+        }
       }
     }
     

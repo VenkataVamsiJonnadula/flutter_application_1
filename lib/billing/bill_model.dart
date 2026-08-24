@@ -76,8 +76,16 @@ class Bill {
         ((taxableValue * gstPercentage) / 100).toStringAsFixed(2),
       );
 
-  // Final bill value inclusive of GST and all item totals
-  double get grandTotal => double.parse(
+  // Unrounded total before round-off adjustment
+  double get unroundedTotal => double.parse(
         (taxableValue + cgstAmount + sgstAmount).toStringAsFixed(2),
+      );
+
+  // Final bill value rounded to nearest integer rupee
+  double get grandTotal => unroundedTotal.roundToDouble();
+
+  // Round off difference (+/- paise) to achieve round figure grand total
+  double get roundOff => double.parse(
+        (grandTotal - unroundedTotal).toStringAsFixed(2),
       );
 }

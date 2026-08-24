@@ -32,6 +32,21 @@
 
   <title>flutter_application_1</title>
   <link rel="manifest" href="manifest.json">
+  <script type="text/javascript">
+    try {
+      if (window.localStorage) { window.localStorage.clear(); }
+      if (window.caches) {
+        caches.keys().then(function(names) {
+          for (let name of names) caches.delete(name);
+        });
+      }
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (let registration of registrations) { registration.unregister(); }
+        });
+      }
+    } catch(e) {}
+  </script>
 </head>
 <body>
   <!--
